@@ -20,6 +20,16 @@ library(tidyverse)
 ```{r}
 # Load first inning data
 statcast_2023_first_inning <- read_csv("~/Downloads/Sports Analytics/NRFI/statcast_2023_first_inning.csv")
+ 
+# Filter for Top First Inning Score
+top_first_inning <- statcast_2023_first_inning %>%
+  filter(inning_topbot == "Top")
+  
+# Filter for Bottom First Inning Score
+bot_first_inning <- statcast_2023_first_inning %>%
+  filter(inning_topbot == "Bot")
+
+
 
 # Distrubition of Away Team First Inning Runs Scored
 statcast_2023_first_inning %>%
@@ -48,9 +58,26 @@ Poisson Distribution or Negative Binomial Distribution???
 
 
 
-# Pitcher Performance from 2022 or Continuous Updated 2023 Prior?
+# Model setup Ideas
 
-```{r}
+```{r, eval=FALSE}
+
+
+library(rstanarm)
+
+top_first_inning_runs <- stan_glmer(away_score ~ (1 | pitcher) + (1 | batter),
+                                family = "Poisson",
+                                data = top_first_inning)
+
+
+bot_first_inning_runs <- stan_glmer(home_score ~ (1 | pitcher) + (1 | batter),
+                                    family = "Poisson",
+                                    data = bot_first_inning)
 
 
 ```
+
+
+# Compute Probability that Exactly 0 Runs scored in Top First AND Bottom First
+
+
