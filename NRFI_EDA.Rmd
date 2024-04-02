@@ -21,6 +21,27 @@ library(tidyverse)
 # Load first inning data
 statcast_2023_first_inning <- read_csv("~/Downloads/Sports Analytics/NRFI/statcast_2023_first_inning.csv")
  
+# Checks to see all events of data
+table(statcast_2023_first_inning$events)
+
+# Vector of Events that only include action events
+# Balls and Strikes that DO NOT result in walks or strikeouts excluded
+included_events <- c("catcher_interf", "double", "field_out", "force_out",
+                     "home_run", "sac_fly", "strikeout", "walk",
+                     "caught_stealing_2b", "double_play", "fielders_choice",
+                     "other_out", "pickoff_caught_stealing_2b", "sac_fly_double_play",
+                     "strikeout_double_play", "caught_stealing_home", "field_error",
+                     "fielders_choice_out", "hit_by_pitch", "sac_bunt", "single",
+                     "triple")
+
+
+# Filter statcast data for only action events
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  filter(events %in% included_events)
+
+
+
+
 # Filter for Top First Inning Score
 top_first_inning <- statcast_2023_first_inning %>%
   filter(inning_topbot == "Top")
