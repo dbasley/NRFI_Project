@@ -24,19 +24,19 @@ statcast_2023_first_inning <- read_csv("~/Downloads/Sports Analytics/NRFI/statca
 # Distrubition of Away Team First Inning Runs Scored
 statcast_2023_first_inning %>%
   filter(inning_topbot == "Top") %>%
-  ggplot(aes(x = away_score)) +
+  ggplot(aes(x = post_away_score)) +
   geom_histogram() +
   labs(x = "Away Score Before Each Pitch",
-       title = "Distribution of Runs Before Each Pitch in Top 1st Inning") +
+       title = "Distribution of Runs After Each Pitch in Top 1st Inning") +
   theme_bw()
 
 # Distribution of Home Team First Inning Runs Scored
 statcast_2023_first_inning %>%
   filter(inning_topbot == "Bot") %>%
-  ggplot(aes(x = away_score)) +
+  ggplot(aes(x = post_home_score)) +
   geom_histogram() +
   labs(x = "Home Score Before Each Pitch",
-       title = "Distribution of Runs Before Each Pitch in Bot 1st Inning") +
+       title = "Distribution of Runs After Each Pitch in Bot 1st Inning") +
   theme_bw()
 
 
@@ -44,4 +44,13 @@ statcast_2023_first_inning %>%
 
 ```
 
+Poisson Distribution or Negative Binomial Distribution???
 
+
+
+# Pitcher Performance from 2022 or Continuous Updated 2023 Prior?
+
+```{r}
+
+
+```
