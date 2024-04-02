@@ -1,0 +1,47 @@
+---
+title: "NRFI Models"
+author: "Devin Basley"
+date: "2024-04-02"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+
+```
+
+# Load Data
+
+```{r}
+# Load first inning data
+statcast_2023_first_inning <- read_csv("~/Downloads/Sports Analytics/NRFI/statcast_2023_first_inning.csv")
+
+# Distrubition of Away Team First Inning Runs Scored
+statcast_2023_first_inning %>%
+  filter(inning_topbot == "Top") %>%
+  ggplot(aes(x = away_score)) +
+  geom_histogram() +
+  labs(x = "Away Score Before Each Pitch",
+       title = "Distribution of Runs Before Each Pitch in Top 1st Inning") +
+  theme_bw()
+
+# Distribution of Home Team First Inning Runs Scored
+statcast_2023_first_inning %>%
+  filter(inning_topbot == "Bot") %>%
+  ggplot(aes(x = away_score)) +
+  geom_histogram() +
+  labs(x = "Home Score Before Each Pitch",
+       title = "Distribution of Runs Before Each Pitch in Bot 1st Inning") +
+  theme_bw()
+
+
+
+
+```
+
+
