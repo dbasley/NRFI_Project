@@ -26,20 +26,21 @@ table(statcast_2023_first_inning$events)
 
 # Vector of Events that only include action events
 # Balls and Strikes that DO NOT result in walks or strikeouts excluded
-included_events <- c("catcher_interf", "double", "field_out", "force_out",
+included_events <- c("double", "field_out", "force_out",
                      "home_run", "sac_fly", "strikeout", "walk",
-                     "caught_stealing_2b", "double_play", "fielders_choice",
-                     "other_out", "pickoff_caught_stealing_2b", "sac_fly_double_play",
-                     "strikeout_double_play", "caught_stealing_home", "field_error",
+                     "double_play", "fielders_choice",
+                     "sac_fly_double_play",
+                     "strikeout_double_play", "field_error",
                      "fielders_choice_out", "hit_by_pitch", "sac_bunt", "single",
                      "triple")
 
 
 # Filter statcast data for only action events
 statcast_2023_first_inning <- statcast_2023_first_inning %>%
-  filter(events %in% included_events)
+  filter(events %in% included_events) %>%
+  mutate(total_runs = post_away_score + post_home_score)
 
-
+na.omit(statcast_2023_first_inning)
 
 
 # Filter for Top First Inning Score
@@ -54,8 +55,7 @@ bot_first_inning <- statcast_2023_first_inning %>%
 
 # Distrubition of Away Team First Inning Runs Scored
 statcast_2023_first_inning %>%
-  filter(inning_topbot == "Top") %>%
-  ggplot(aes(x = post_away_score)) +
+  ggplot(aes(x = away_score)) +
   geom_histogram() +
   labs(x = "Away Score Before Each Pitch",
        title = "Distribution of Runs After Each Pitch in Top 1st Inning") +
@@ -63,8 +63,7 @@ statcast_2023_first_inning %>%
 
 # Distribution of Home Team First Inning Runs Scored
 statcast_2023_first_inning %>%
-  filter(inning_topbot == "Bot") %>%
-  ggplot(aes(x = post_home_score)) +
+  ggplot(aes(x = home_score)) +
   geom_histogram() +
   labs(x = "Home Score Before Each Pitch",
        title = "Distribution of Runs After Each Pitch in Bot 1st Inning") +
@@ -81,24 +80,42 @@ Poisson Distribution or Negative Binomial Distribution???
 
 # Model setup Ideas
 
-```{r, eval=FALSE}
+
+## Total runs first inning
+
+```{r}
 
 
 library(rstanarm)
 
-top_first_inning_runs <- stan_glmer(away_score ~ (1 | pitcher) + (1 | batter),
+first_inning_runs <- stan_glmer(total_runs ~ (1 | pitcher) + (1 | batter),
                                 family = "Poisson",
-                                data = top_first_inning)
+                                data = statcast_2023_first_inning)
 
 
-bot_first_inning_runs <- stan_glmer(home_score ~ (1 | pitcher) + (1 | batter),
-                                    family = "Poisson",
-                                    data = bot_first_inning)
 
 
 ```
 
 
-# Compute Probability that Exactly 0 Runs scored in Top First AND Bottom First
+## Top First and Bottom First separate
+
+```{r}
+
+top_first_inning_runs <- stan_glmer(post_away_score ~ (1 | pitcher) + (1 | batter),
+                                family = "Poisson",
+                                data = top_first_inning)
+
+
+bot_first_inning_runs <- stan_glmer(post_home_score ~ (1 | pitcher) + (1 | batter),
+                                family = "Poisson",
+                                data = bot_first_inning)
+
+
+
+```
+
+
+# 
 
 
