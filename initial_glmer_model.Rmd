@@ -1,0 +1,118 @@
+---
+title: "These are my dang models!!!!"
+author: "Zachary Strennen"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+library(rstanarm)
+
+```
+
+# Load Data
+
+```{r}
+# Load first inning data
+statcast_2023_first_inning <- read_csv("statcast_2023_first_inning.csv")
+
+# Vector of Events that only include action events
+# Balls and Strikes that DO NOT result in walks or strikeouts excluded
+included_events <- c("double", "field_out", "force_out",
+                     "home_run", "sac_fly", "strikeout", "walk",
+                     "double_play", "fielders_choice",
+                     "sac_fly_double_play",
+                     "strikeout_double_play", "field_error",
+                     "fielders_choice_out", "hit_by_pitch", "sac_bunt", "single",
+                     "triple")
+
+
+# Filter statcast data for only action events
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  filter(events %in% included_events) %>%
+  mutate(total_runs = post_away_score + post_home_score)
+
+na.omit(statcast_2023_first_inning)
+
+
+# Filter for Top First Inning Score
+top_first_inning <- statcast_2023_first_inning %>%
+  filter(inning_topbot == "Top")
+  
+# Filter for Bottom First Inning Score
+bot_first_inning <- statcast_2023_first_inning %>%
+  filter(inning_topbot == "Bot")
+
+# Reverse the data to be in chronological order
+statcast_2023_first_inning <- statcast_2023_first_inning[rev(1:nrow(statcast_2023_first_inning)), ]
+# Filter to just top of inning
+top_of_inning <- filter(statcast_2023_first_inning, inning_topbot == "Top")
+```
+
+
+# Poisson model
+
+```{r}
+# Filter for combined batters
+first_inning_summary <- top_of_inning %>%
+  group_by(game_pk) %>%
+  summarise(
+    score_end_of_first_inning = last(total_runs), # Assuming 'score' records the cumulative score by inning
+    pitcher_id = as.factor(first(pitcher)),
+    batters_id = as.factor(paste(sort(unique(batter)[1:3]), collapse="-")), # Creates a unique ID from the first three batters
+    .groups = 'drop' # This option drops the grouping structure after summarising
+  )
+
+# Build poisson model with stan
+model <- stan_glmer(score_end_of_first_inning ~ (1 | pitcher_id) + (1 | batters_id),
+  family = poisson,
+  data = first_inning_summary
+)
+
+# Get predicted valies
+predicted_counts <- posterior_predict(model)
+observed_counts <- first_inning_summary$score_end_of_first_inning
+
+# Plot observed vs predicted
+plot(observed_counts, colMeans(predicted_counts), 
+     xlab = "Observed counts", ylab = "Predicted counts")
+abline(0, 1, col = "red")
+```
+
+# Binomial model
+
+```{r}
+binary_innings <- top_of_inning %>%
+  group_by(game_pk) %>%
+  summarise(
+    run_scored = max(post_away_score[1:3], na.rm = TRUE) > 0,
+    pitcher_id = as.factor(first(pitcher)),
+    batters_id = as.factor(paste(sort(unique(batter)[1:3]), collapse="-")), # Creates a unique ID from the first three batters
+    .groups = 'drop' # This option drops the grouping structure after summarising
+  )
+
+model <- glmer(run_scored ~ (1 | pitcher_id) + (1 | batters_id),
+  family = binomial,
+  data = binary_innings
+)
+
+
+# Predicting probabilities
+predicted_probabilities <- predict(model, type = "response")
+predicted_probabilities
+# Converting probabilities to binary outcomes using 0.5 as the threshold
+predicted_outcomes <- ifelse(predicted_probabilities > 0.18, 1, 0)
+sum(predicted_outcomes)
+# Actual outcomes
+actual_outcomes <- binary_innings$run_scored
+sum(actual_outcomes)
+# Calculating accuracy
+accuracy <- mean(predicted_outcomes == actual_outcomes)
+print(paste("Accuracy:", accuracy))
+```
+
