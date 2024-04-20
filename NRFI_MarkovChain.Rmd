@@ -1,0 +1,203 @@
+---
+title: "NRFi Markov Chain"
+author: "Devin Basley"
+date: "2024-04-20"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+retro vs statcast:
+
+runs_scored = post_bat_score
+
+
+base1_run_id = on_1b
+base2_run_id = on_2b
+base3_run_id = on_3b
+
+
+
+
+
+```{r}
+
+# Load Data
+statcast_2023_first_inning <- read_csv("statcast_2023_first_inning.csv")
+
+
+#
+statcast_2023_first_inning$on_1b[is.na(statcast_2023_first_inning$on_1b)] <- "woo"
+statcast_2023_first_inning$on_2b[is.na(statcast_2023_first_inning$on_2b)] <- "woo"
+statcast_2023_first_inning$on_3b[is.na(statcast_2023_first_inning$on_3b)] <- "woo"
+
+#statcast_2023_first_inning <- statcast_2023_first_inning[rev(1:nrow(statcast_2023_first_inning)), ]
+
+# Vector of Events that only include action events
+# Balls and Strikes that DO NOT result in walks or strikeouts excluded
+included_events <- c("double", "field_out", "force_out",
+                     "home_run", "sac_fly", "strikeout", "walk",
+                     "double_play", "fielders_choice",
+                     "sac_fly_double_play",
+                     "strikeout_double_play", "field_error",
+                     "fielders_choice_out", "hit_by_pitch", "sac_bunt", "single",
+                     "triple")
+
+
+# Filter statcast data for only action events
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  filter(events %in% included_events) %>%
+  mutate(runs_before = away_score + home_score)
+
+
+# Summarize half inning totals
+half_innings <- statcast_2023_first_inning %>%
+  group_by(inning_topbot) %>%
+  summarize(outs_inning = sum(outs_when_up),
+            runs_inning = sum(post_bat_score),
+            runs_start = first(runs_before),
+            max_runs = runs_inning + runs_start)
+
+
+
+
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  inner_join(half_innings, by = "inning_topbot") %>%
+  mutate(runs_roi = max_runs - runs_before)
+
+
+# Start Game State compuation
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  mutate(bases = paste0(
+    if_else(on_1b == "woo", 0, 1),
+    if_else(on_2b == "woo", 0, 1),
+    if_else(on_3b == "woo", 0, 1)))
+    
+
+# statcast_2023_first_inning <- statcast_2023_first_inning %>%
+#   mutate(
+#     is_runner1 = as.numeric(
+#       on_1b == 1 | batter == 1
+#     ),
+#     is_runner2 = as.numeric(
+#       on_1b == 2 | on_2b == 2 | 
+#         batter == 2
+#     ),
+#     is_runner3 = as.numeric(
+#       on_1b== 3 | on_2b == 3 |
+#         on_3b == 3 | batter == 3
+#     ),
+#     new_bases = paste0(is_runner1, is_runner2, is_runner3))
+
+
+# Compute Pre and Post AB State
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  mutate(state = paste(bases, outs_when_up),
+        new_state = case_when(
+          inning_topbot != lag(inning_topbot) ~ NA_character_,
+           TRUE ~ lag(state)
+         ))
+
+
+
+# Reverse Data
+statcast_2023_first_inning <- statcast_2023_first_inning[rev(1:nrow(statcast_2023_first_inning)), ]
+
+
+# Convert NA Game States to 3 Outs
+# woo is place holder for NA
+# IDK it wasn't working with NA so I changed it to woo and it worked
+statcast_2023_first_inning$new_state[is.na(statcast_2023_first_inning$new_state)] <- "woo"
+
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  mutate(new_state = str_replace(new_state, "woo", "3"))
+
+# Table of all game states
+table(statcast_2023_first_inning$new_state)
+
+
+# t-matrix of all game states
+t_matrix <- statcast_2023_first_inning %>%
+  select(state, new_state) %>%
+  table()
+
+dim(t_matrix)
+
+# p-matrix of game state t-matrix
+p_matrix <- prop.table(t_matrix, 1)
+dim(p_matrix)
+
+
+# probablity of 3 outs = 1 in Game State
+p_matrix <- p_matrix %>%
+  rbind("3" = c(rep(0, 24), 1))
+
+dim(p_matrix)
+
+
+p_matrix %>%
+  apply(MARGIN = 1, FUN = sum)
+
+
+p_matrix %>%
+  as_tibble(rownames = "state") %>%
+  filter(state == "000 0") %>%
+  pivot_longer(
+    cols = -state, 
+    names_to = "new_state", 
+    values_to = "Prob" 
+  ) %>%
+  filter(Prob > 0)
+
+
+num_havent_scored <- function(s) {
+  s |>
+    str_split("") %>%
+    pluck(1) %>%
+    as.numeric() %>%
+    sum(na.rm = TRUE)
+}
+
+runners_out <- t_matrix %>%
+  row.names() %>%
+  set_names() %>%
+  map_int(num_havent_scored)
+  
+r_runs <- outer(
+  runners_out + 1, 
+  runners_out, 
+  FUN = "-"
+) %>%
+  cbind("3" = rep(0, 24))
+
+
+# Simulate 10,000 half innings
+simulate_half_inning <- function(P, R, start = 1) {
+  s <- start
+  path <- NULL
+  runs <- 0
+  while (s < 25) {
+    s_new <- sample(1:25, size = 1, prob = P[s, ])
+    path <- c(path, s_new)
+    runs <- runs + R[s, s_new]
+    s <- s_new
+  }
+  runs
+}
+
+set.seed(111653)
+simulated_runs <- 1:10000 %>%
+  map_int(~simulate_half_inning(t_matrix, r_runs))
+
+
+table(simulated_runs)
+
+# Probability of 0 runs across all simulations
+sum(simulated_runs == 0) / 10000
+
+
+```
+
