@@ -1,0 +1,179 @@
+---
+title: "Inning Simulation"
+author: "Devin Basley"
+date: "2024-04-21"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load Data
+
+```{r}
+
+# Load Data
+statcast_2023_first_inning <- read_csv("statcast_2023_first_inning.csv")
+
+
+#
+statcast_2023_first_inning$on_1b[is.na(statcast_2023_first_inning$on_1b)] <- "woo"
+statcast_2023_first_inning$on_2b[is.na(statcast_2023_first_inning$on_2b)] <- "woo"
+statcast_2023_first_inning$on_3b[is.na(statcast_2023_first_inning$on_3b)] <- "woo"
+
+#statcast_2023_first_inning <- statcast_2023_first_inning[rev(1:nrow(statcast_2023_first_inning)), ]
+
+# Vector of Events that only include action events
+# Balls and Strikes that DO NOT result in walks or strikeouts excluded
+included_events <- c("double", "field_out", "force_out",
+                     "home_run", "sac_fly", "strikeout", "walk",
+                     "double_play", "fielders_choice",
+                     "sac_fly_double_play",
+                     "strikeout_double_play", "field_error",
+                     "fielders_choice_out", "hit_by_pitch", "sac_bunt", "single",
+                     "triple")
+
+
+# Filter statcast data for only action events
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  filter(events %in% included_events) %>%
+  mutate(runs_before = away_score + home_score)
+
+
+# Summarize half inning totals
+half_innings <- statcast_2023_first_inning %>%
+  group_by(inning_topbot) %>%
+  summarize(outs_inning = sum(outs_when_up),
+            runs_inning = sum(post_bat_score),
+            runs_start = first(runs_before),
+            max_runs = runs_inning + runs_start)
+
+
+
+
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  inner_join(half_innings, by = "inning_topbot") %>%
+  mutate(runs_roi = max_runs - runs_before)
+
+
+# Start Game State compuation
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  mutate(bases = paste0(
+    if_else(on_1b == "woo", 0, 1),
+    if_else(on_2b == "woo", 0, 1),
+    if_else(on_3b == "woo", 0, 1)))
+    
+
+# statcast_2023_first_inning <- statcast_2023_first_inning %>%
+#   mutate(
+#     is_runner1 = as.numeric(
+#       on_1b == 1 | batter == 1
+#     ),
+#     is_runner2 = as.numeric(
+#       on_1b == 2 | on_2b == 2 | 
+#         batter == 2
+#     ),
+#     is_runner3 = as.numeric(
+#       on_1b== 3 | on_2b == 3 |
+#         on_3b == 3 | batter == 3
+#     ),
+#     new_bases = paste0(is_runner1, is_runner2, is_runner3))
+
+
+# Compute Pre and Post AB State
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  mutate(state = paste(bases, outs_when_up),
+        new_state = case_when(
+          inning_topbot != lag(inning_topbot) ~ NA_character_,
+           TRUE ~ lag(state)
+         ))
+
+
+
+# Reverse Data
+statcast_2023_first_inning <- statcast_2023_first_inning[rev(1:nrow(statcast_2023_first_inning)), ]
+
+
+statcast_2023_first_inning$new_state[is.na(statcast_2023_first_inning$new_state)] <- "woo"
+
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  mutate(new_state = str_replace(new_state, "woo", "3"))
+
+
+
+# End of First Inning Summary
+end_inning_data <- statcast_2023_first_inning %>%
+  dplyr::select(c(game_date, game_pk, player_name, player_name, batter, post_home_score, post_away_score, inning_topbot, away_team, home_team)) %>%
+  group_by(game_pk) %>%
+  mutate(away_runs = max(post_away_score),
+            home_runs = max(post_home_score),
+            total_runs = away_runs + home_runs,
+            home = home_team,
+            away = away_team) %>%
+  ungroup() 
+  
+# Home team indicator variable
+end_inning_data <- end_inning_data %>%
+  mutate(is_home = ifelse(inning_topbot == "Bot", 1, 0)) 
+
+
+end_inning_data <- end_inning_data %>%
+  mutate(team = if_else(is_home == 1, home, away),
+         runs = if_else(is_home == 1, home_runs, away_runs)) 
+
+# Selecting required columns
+new_dataset <- end_inning_data %>%
+  dplyr::select(game_pk, team, runs, is_home, player_name)
+
+half_inning_data <- end_inning_data %>%
+  group_by(game_pk, is_home) %>%
+  summarise(team = first(team),
+            runs = if_else(first(is_home) == 1, max(home_runs), max(away_runs)),
+            pitcher = first(player_name),
+            PA = n_distinct(batter),
+            date = first(game_date)) %>%
+  ungroup()
+
+team_info <- end_inning_data %>%
+  group_by(game_pk) %>%
+  summarise(home_team = first(home),
+            away_team = first(away)) %>%
+  ungroup()
+
+# Merge team information with half_inning_data
+half_inning_data <- half_inning_data %>%
+  left_join(team_info, by = "game_pk")
+
+
+game_summary <- half_inning_data %>%
+  group_by(game_pk) %>%
+  reframe(
+    home_team = first(home_team),
+    away_team = first(away_team),
+    home_runs = sum(if_else(is_home == 1, runs, 0)),
+    away_runs = sum(if_else(is_home == 0, runs, 0)),
+    total_runs = if_else(home_runs + away_runs == 0, 1, 0),
+    date = first(date)
+  ) %>%
+  ungroup()
+
+
+mlb_team_scoring_rate <- half_inning_data %>%
+  group_by(team) %>%
+  summarise(
+    run_rate = mean(runs)
+  ) %>%
+  ungroup()
+
+
+# Plot Histogram of team scoring rate
+mlb_team_scoring_rate %>%
+  ggplot(aes(x = run_rate)) +
+  geom_histogram(bins = 25) +
+  labs(x = "Run Scoring Rate",
+       y = "Count",
+       title = "Distribution of Team Scoring Rate") +
+  theme_bw()
+
+```
