@@ -148,7 +148,7 @@ half_inning_data <- half_inning_data %>%
 
 game_summary <- half_inning_data %>%
   group_by(game_pk) %>%
-  reframe(
+  summarize(
     home_team = first(home_team),
     away_team = first(away_team),
     home_runs = sum(if_else(is_home == 1, runs, 0)),
@@ -159,76 +159,126 @@ game_summary <- half_inning_data %>%
   ungroup()
 
 
+# mlb_team_run_rate <- half_inning_data %>%
+#   group_by(team) %>%
+#   summarise(
+#     run_rate = mean(runs)
+#   ) %>%
+#   ungroup()
+
 mlb_team_run_rate <- half_inning_data %>%
   group_by(team) %>%
   summarise(
-    run_rate = mean(runs)
+    run_rate_away = mean(if_else(is_home == 0, runs, NA), na.rm = TRUE),
+    run_rate_home = mean(if_else(is_home == 1, runs, NA), na.rm = TRUE)
   ) %>%
   ungroup()
 
-
-# Plot Histogram of team scoring rate
+# Plot Histogram of away team scoring rate
 mlb_team_run_rate %>%
-  ggplot(aes(x = run_rate)) +
+  ggplot(aes(x = run_rate_away)) +
   geom_histogram(bins = 25) +
+  geom_density() +
+  labs(x = "Run Scoring Rate",
+       y = "Count",
+       title = "Distribution of Team Scoring Rate") +
+  theme_bw()
+
+# Plot Histogram of home team scoring rate
+mlb_team_run_rate %>%
+  ggplot(aes(x = run_rate_home)) +
+  geom_histogram(bins = 25) +
+  geom_density() +
   labs(x = "Run Scoring Rate",
        y = "Count",
        title = "Distribution of Team Scoring Rate") +
   theme_bw()
 
 
-# Scoring rate as numeric variable
-mlb_team_run_rate$run_rate <- as.numeric(mlb_team_run_rate$run_rate)
+
+# Home run rate as numeric variable
+mlb_team_run_rate$run_rate_home <- as.numeric(mlb_team_run_rate$run_rate_home)
+# Away run rate as numeric variable
+mlb_team_run_rate$run_rate_away <- as.numeric(mlb_team_run_rate$run_rate_away)
 
 
-# Estimate prior shape and rate for gamma distribution
-run_rate_gamma <- fitdistr(mlb_team_run_rate$run_rate, dgamma, 
+# Estimate prior shape and rate for home gamma distribution
+home_run_rate_gamma <- fitdistr(mlb_team_run_rate$run_rate_home, dgamma, 
+                               list(shape = 5, rate = 4))
+# Estimate prior shape and rate for away gamma distribution
+away_run_rate_gamma <- fitdistr(mlb_team_run_rate$run_rate_away, dgamma, 
                                list(shape = 5, rate = 4))
 
 
-# Shape and Rate estimates
-prior_shape <- run_rate_gamma$estimate[1]
-prior_rate <- run_rate_gamma$estimate[2]
+# Home Shape and Rate estimates
+home_prior_shape <- home_run_rate_gamma$estimate[1]
+home_prior_rate <- home_run_rate_gamma$estimate[2]
+
+# Away Shape and Rate estimates
+away_prior_shape <- away_run_rate_gamma$estimate[1]
+away_prior_rate <- away_run_rate_gamma$estimate[2]
 
 
-# Displays Prior Shape and Prior Rate
-cat("The prior shape is", round(prior_shape, 2),"\n")
-cat("The prior rate is", round(prior_rate, 2))
+
+# Displays Home Prior Shape and Prior Rate
+cat("The home prior shape is", round(home_prior_shape, 2),"\n")
+cat("The home prior rate is", round(home_prior_rate, 2), "\n")
+
+# Displays Away Prior Shape and Prior Rate
+cat("The away prior shape is", round(away_prior_shape, 2),"\n")
+cat("The away prior rate is", round(away_prior_rate, 2))
 
 
+# # Create a summary table with total goals and matches plays
+# summary_table <- half_inning_data %>%
+#   group_by(team) %>%
+#   summarize(total_runs = sum(runs),
+#             games_played = n())
 
-# Create a summary table with total goals and matches plays
 summary_table <- half_inning_data %>%
   group_by(team) %>%
-  summarize(total_runs = sum(runs),
-            games_played = n())
+  summarize(
+    total_runs_home = sum(if_else(is_home == 1, runs, 0)),
+    total_runs_away = sum(if_else(is_home == 0, runs, 0)),
+    total_home_games = sum(if_else(is_home == 1, 1, 0)),
+    total_away_games = sum(if_else(is_home == 0, 1, 0))
+  ) %>%
+  ungroup()
+
+# Add columns for home prior shape and rate hyperparameters
+summary_table$prior_shape_home <- home_prior_shape
+summary_table$prior_rate_home <- home_prior_rate
+# Add columns for away prior shape and rate hyperparameters
+summary_table$prior_shape_away <- away_prior_shape
+summary_table$prior_rate_away <- away_prior_rate
 
 
-
-# Add columns for prior shape and rate hyperparameters
-summary_table$prior_shape <- prior_shape
-summary_table$prior_rate <- prior_rate
-
-
-# Compute the updated quantities for the posterior shape and rate parameters
-summary_table$posterior_shape <- summary_table$prior_shape + summary_table$total_runs
-summary_table$posterior_rate <- summary_table$prior_rate + summary_table$games_played
+# Compute the updated quantities for the home posterior shape and rate parameters
+summary_table$posterior_shape_home <- summary_table$prior_shape_home + summary_table$total_runs_home
+summary_table$posterior_rate_home <- summary_table$prior_rate_home + summary_table$total_home_games
+# Compute the updated quantities for the away posterior shape and rate parameters
+summary_table$posterior_shape_away <- summary_table$prior_shape_away + summary_table$total_runs_away
+summary_table$posterior_rate_away <- summary_table$prior_rate_away + summary_table$total_away_games
 
 
-# Compute Gamma mean and Gamma mode from the summary table
+# Compute Home Gamma mean and Gamma mode from the summary table
 gamma_mean_mode_table <- summary_table %>%
-  mutate(gamma_mean = posterior_shape / posterior_rate,
-         gamma_mode = (posterior_shape - 1) / posterior_rate) 
-  
+  mutate(gamma_mean_home = posterior_shape_home / posterior_rate_home,
+         gamma_mode_home = (posterior_shape_home - 1) / posterior_rate_home,
+         gamma_mean_away = posterior_shape_away / posterior_rate_away,
+         gamma_mode_away = (posterior_shape_home - 1) / posterior_rate_away) 
+
 
 # Create subset of team and gamma mean, mode
 gamma_mean_mode_table <- subset(gamma_mean_mode_table, 
-                                select = -c(total_runs, games_played,prior_rate, 
-                                            prior_shape, posterior_rate,
-                                            posterior_shape))
+                                select = -c(total_runs_home, total_runs_away, 
+                                            total_away_games,total_home_games ,prior_rate_home, 
+                                            prior_shape_home, posterior_rate_home,
+                                            posterior_shape_home, prior_rate_away, prior_shape_away,
+                                            posterior_rate_away))
 
-# Put in descending order of Gamma mode
-gamma_mean_mode_table <- gamma_mean_mode_table[order(-gamma_mean_mode_table$gamma_mode), ]
+# Put in descending order of Home Gamma mode
+gamma_mean_mode_table <- gamma_mean_mode_table[order(-gamma_mean_mode_table$gamma_mode_home), ]
 
 # Display Gamma mean and mode table
 print(gamma_mean_mode_table)
@@ -237,17 +287,33 @@ print(gamma_mean_mode_table)
 
 # Compute 80% credible intervals
 summary_table <- summary_table %>%
-  mutate(lower_int = qgamma(0.1, posterior_shape),
-         upper_int = qgamma(0.9, posterior_shape))
+  mutate(lower_int_home = qgamma(0.1, posterior_shape_home),
+         upper_int_home = qgamma(0.9, posterior_shape_home),
+         lower_int_away = qgamma(0.1, posterior_shape_away),
+         upper_int_away = qgamma(0.9, posterior_shape_away))
+
+# summary_table <- summary_table %>%
+#   dplyr::select(-c(lower_int, upper_int))
 
 
-# Visualize Team posterior Shape with their credible intervals
+# Visualize Home Team posterior Shape with their credible intervals
 summary_table %>%
-  ggplot(aes(x = reorder(team, posterior_shape), y = posterior_shape)) +
+  ggplot(aes(x = reorder(team, posterior_shape_home), y = posterior_shape_home)) +
   geom_point() +
-  geom_errorbar(aes(ymin = lower_int, ymax = upper_int, color = "red")) +
+  geom_errorbar(aes(ymin = lower_int_home, ymax = upper_int_home, color = "red")) +
   labs(x = "Team", y = "Posterior Shape",
-       title = "Soccer Team Posterior Shape with 80% Credible Intervals",
+       title = "MLB Home Team Posterior Shape with 80% Credible Intervals",
+       color = "Credible Intervals") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# Visualize Away Team posterior Shape with their credible intervals
+summary_table %>%
+  ggplot(aes(x = reorder(team, posterior_shape_away), y = posterior_shape_away)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = lower_int_away, ymax = upper_int_away, color = "red")) +
+  labs(x = "Team", y = "Posterior Shape",
+       title = "MLB Away Team Posterior Shape with 80% Credible Intervals",
        color = "Credible Intervals") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
@@ -255,20 +321,26 @@ summary_table %>%
 
 
 summary_table <- summary_table %>%
-  mutate(posterior_probs = 1 - pgamma(1, posterior_shape, posterior_rate),
-         prior_probs = 1 - pgamma(1, prior_shape, prior_rate),
-         posterior_odds = posterior_probs / (1 - posterior_probs),
-         prior_odds = prior_probs / (1 - prior_probs),
-         Bayes_Factor = posterior_odds / prior_odds)
+  mutate(posterior_probs_home = 1 - pgamma(1, posterior_shape_home, posterior_rate_home),
+         prior_probs_home = 1 - pgamma(1, prior_shape_home, prior_rate_home),
+         posterior_odds_home = posterior_probs_home / (1 - posterior_probs_home),
+         prior_odds_home = prior_probs_home / (1 - prior_probs_home),
+         Bayes_Factor_home = posterior_odds_home / prior_odds_home,
+         posterior_probs_away = 1 - pgamma(1, posterior_shape_away, posterior_rate_away),
+         prior_probs_away = 1 - pgamma(1, prior_shape_away, prior_rate_away),
+         posterior_odds_away = posterior_probs_away / (1 - posterior_probs_away),
+         prior_odds_away = prior_probs_away / (1 - prior_probs_away),
+         Bayes_Factor_away = posterior_odds_away / prior_odds_away)
 
 
 # Create Bayes Factor Table with team, posterior probability and bayes factor
 Bayes_Factor_Table <- subset(summary_table, 
-                             select = c(team, posterior_probs, Bayes_Factor))
+                             select = c(team, posterior_probs_home, Bayes_Factor_home,
+                                        posterior_probs_away, Bayes_Factor_away))
 
 
 # Put Bayes Factor table in descending order of Bayes Factor
-Bayes_Factor_Table <- Bayes_Factor_Table[order(-Bayes_Factor_Table$Bayes_Factor), ]
+Bayes_Factor_Table <- Bayes_Factor_Table[order(-Bayes_Factor_Table$Bayes_Factor_home), ]
                              
 
 # Display Bayes Factor Table
@@ -276,7 +348,7 @@ print(Bayes_Factor_Table)
 
 
 
-sim_team_goals <- function(n_games, shape, rate) {
+sim_team_runs <- function(n_games, shape, rate) {
   
   # First draw the values for the scoring rate from the posterior distribution
   # using given shape and rate parameters:
@@ -295,8 +367,12 @@ sim_team_goals <- function(n_games, shape, rate) {
 
 
 
-```{r}
 
+
+
+# Account For Home and Away Posteriors
+
+```{r}
 # Set-up number of sims as a global parameter:
 N_SIMS <- 1000
 
@@ -308,60 +384,59 @@ pred_game_outcomes <-
             # First gather the match_i data:
             game_i_data <- game_summary[game_i,]
             
-            # Next, we'll get the home team parameters, by first checking
-            # if it is a team that we observed in the previous data:
-            if (game_i_data$home_team %in% game_summary) {
-              
-              # Get the posterior distribution parameters:
-              home_params <- posterior_params[match_i_data$home_team, ]
-              
+            # Next, we'll get the home team parameters:
+            home_params <- if (game_i_data$home_team %in% summary_table$team) {
+              summary_table %>%
+                filter(team == game_i_data$home_team) %>%
+                dplyr::select(c(posterior_shape_home, posterior_rate_home)) %>%
+                unlist() %>%
+                as.numeric()
             } else {
-              
-              # otherwise use the prior distribution parameters:
-              home_params <- c(prior_shape, prior_rate)
-              
+              c(prior_shape_home, prior_rate_home)
             }
             
             # Repeat for the away team:
-            if (game_i_data$away_team %in% game_summary) {
-              
-              # Get the posterior distribution parameters:
-              away_params <- posterior_params[game_i_data$away_team, ]
-              
+            away_params <- if (game_i_data$away_team %in% summary_table$team) {
+              summary_table %>%
+                filter(team == game_i_data$away_team) %>%
+                dplyr::select(c(posterior_shape_away, posterior_rate_away)) %>%
+                unlist() %>%
+                as.numeric()
             } else {
-              
-              # otherwise use the prior distribution parameters:
-              away_params <- c(prior_shape, prior_rate)
-              
+              c(prior_shape_away, prior_rate_away)
             }
             
-            # And now use the function from part (a) to generate goal values
+            # And now use the function from part (a) to generate run values
             # for home team:
-            home_runs <- sim_team_runs(N_SIMS, 
-                                         home_params[1],
-                                         away_params[2])
+            home_runs <- sim_team_runs(N_SIMS, home_params[1], home_params[2])
             
             # Repeat for away:
-            away_runs <- sim_team_runs(N_SIMS, 
-                                         away_params[1],
-                                         away_params[2])
+            away_runs <- sim_team_runs(N_SIMS, away_params[1], away_params[2])
             
             # Determine pairwise whether or not home_win, away_win, or tie across
             # the N_SIMS:
-            sim_outcomes <- ifelse(away_runs + home_runs == 0, 1, 0)
+            sim_outcomes <- ifelse(away_runs + home_runs == 0, 1,0)
             
-            # Return a table that has the match id, actual outcome, and predicted probs
+            # Return a tibble that has the match id, actual outcome, and predicted probs
             # for each of the outcomes:
             tibble(game_id = game_i_data$game_pk,
                    outcome = game_i_data$outcome,
-                   home_win_prob = length(which(sim_outcomes == 1)) / N_SIMS,
-                   away_win_prob = length(which(sim_outcomes == 0)) / N_SIMS)
+                   NRFI_win_prob = length(which(sim_outcomes == 1)) / N_SIMS,
+                   NRFI_lose_prob = length(which(sim_outcomes == 0)) / N_SIMS)
             
           })
 
-# And display:
 pred_game_outcomes
 
 ```
+
+
+
+```{r}
+
+
+
+```
+
 
 
