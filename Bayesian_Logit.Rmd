@@ -9,6 +9,7 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+
 ```{r}
 library(tidyverse)
 
@@ -183,6 +184,314 @@ inning_summary <- inning_summary %>%
 
 # # Join half_inning_data with inning_summary by game_pk
 # inning_summary <- left_join(half_inning_data, inning_summary, by = "game_pk")
+
+
+
+
+```
+
+
+```{r}
+# Group half_inning_data by game_pk and is_home to calculate FIP for home and away pitchers
+pitcher_stats_grouped <- half_inning_data %>%
+  group_by(game_pk, is_home) %>%
+  summarize(
+    home_pitcher_fip = if_else(first(is_home) == 1, first(FIP), NA_real_),
+    away_pitcher_fip = if_else(first(is_home) == 0, first(FIP), NA_real_)
+  ) %>%
+  ungroup()
+
+# Join the calculated FIP for home and away pitchers with inning_summary
+final_data <- left_join(inning_summary, pitcher_stats_grouped, by = "game_pk")
+
+# Ensure distinct games in the final_data
+final_data <- final_data %>%
+  distinct(game_pk, .keep_all = TRUE)
+
+# View the final_data
+print(final_data)
+
+
+
+```
+
+
+
+
+# Bayesian Poisson Model
+
+
+```{r}
+
+library(rstanarm)
+options(mc.cores = parallel::detectCores())
+team_runs_model <- stan_glmer(runs ~ is_home + run_rate_home + run_rate_away + (1 | home_team) + (1 | away_team) + (1 | pitcher),
+                              family = poisson,
+                              data = half_inning_data,
+                              cores = 8,
+                              iter = 2000 * 2,
+                              seed = 2015,
+                              chains = 4)
+
+
+```
+
+# Bayesian Poisson Regression Predictions
+
+```{r}
+
+
+nrfi_preds <- posterior_predict(team_runs_model, newdata = half_inning_data, seed = 2023)
+
+nrfi_preds_home <- posterior_predict(team_runs_model, newdata = tibble(home_team = "BOS",
+                                                                  away_team = "BAL",
+                                                                  is_home = 1,
+                                                                  run_rate_home = 0.6913580,
+                                                                  run_rate_away = 0.3333333,
+                                                                  pitcher = "Gibson, Kyle"), seed = 15)
+nrfi_preds_away <- posterior_predict(team_runs_model, newdata = tibble(home_team = "BOS",
+                                                                  away_team = "BAL",
+                                                                  is_home = 0,
+                                                                  run_rate_home = 0.6419753,
+                                                                  run_rate_away = 0.3950617,
+                                                                  pitcher = "Kluber, Corey"), seed = 15)
+par(mfrow=c(1,2))
+hist(nrfi_preds_home, main = "CLE Runs vs SEA", 
+     xlab = "# of Runs")
+
+hist(nrfi_preds_away, main = "SEA Runs vs CLE", 
+     xlab = "# of Runs")
+
+
+
+```
+
+
+# Bayesian Logistic Regression
+
+```{r}
+
+nrfi_model_logit <- stan_glmer(as.factor(total_runs) ~  home_run_rate + away_run_rate +
+                                 home_fip + away_fip + (1 | home_team) + (1 | away_team) + 
+                                 (1 | home_pitcher) + (1 | away_pitcher),
+                              family = binomial,
+                              data = inning_summary,
+                              cores = 8,
+                              iter = 2000 * 2,
+                              seed = 2015,
+                              chains = 4)
+
+
+nrfi_logit_preds <- posterior_predict(nrfi_model_logit,
+                                        newdata = select(inning_summary, c(home_team,
+                                                       away_team,
+                                                       home_pitcher,
+                                                       away_pitcher,
+                                                       home_run_rate,
+                                                       away_run_rate,
+                                                       home_fip,
+                                                       away_fip)),
+                                      seed = 30
+                                      )
+
+nrfi_logit_preds_test <- posterior_predict(nrfi_model_logit,
+                                      newdata = tibble(home_team = "SEA",
+                                                       away_team = "CLE"),
+                                      seed = 20)
+
+cat("Probability of NRFI", mean(sum(nrfi_logit_preds == 0) / length(nrfi_logit_preds) * 100), "%")
+
+cat("Probability of NRFI between SEA (home) and CLE (away)", sum(nrfi_logit_preds_test == 0) / length(nrfi_logit_preds_test) * 100, "%")
+
+
+nrfi_logit_preds <- tibble(nrfi_logit_preds)
+
+nrfi_logit_preds <- tibble(colMeans(nrfi_logit_preds))
+
+
+# Add predictions to inning_summary
+inning_summary_with_preds <- bind_cols(inning_summary, nrfi_logit_preds)
+
+# Assuming actual outcomes are stored in a column named actual_outcome
+# For example, if actual_outcome is binary (0 or 1), representing a win or loss for the home team, respectively
+# You can compare it with the predicted probabilities
+inning_summary_with_preds <- inning_summary_with_preds %>%
+  mutate(predicted_outcome = if_else(colMeans(nrfi_logit_preds) > 0.5, "NRFI", "YRFI"))
+
+
+# Now you can compare the predicted outcomes with the actual outcomes
+comparison <- inning_summary_with_preds %>%
+  select(game_pk, predicted_outcome, total_runs)
+
+# Check the comparison
+print(comparison)
+
+# Assuming you have comparison data frame as described in the previous response
+
+# Calculate accuracy
+accuracy <- mean(comparison$predicted_outcome == comparison$total_runs)
+
+# Print accuracy
+print(paste("Accuracy:", accuracy))
+
+
+
+```
+
+
+
+
+
+
+```{r}
+
+
+
+# Join pitcher_stats with half_inning_data by player_name
+half_inning_data <- left_join(half_inning_data, pitcher_stats, by = c("pitcher" = "player_name"))
+
+```
+
+
+
+
+
+
+# Code for Home and Away Team Runs Rates
+
+```{r}
+
+mlb_team_run_rate <- half_inning_summary %>%
+  group_by(team) %>%
+  summarise(
+    run_rate_away = mean(if_else(is_home == 0, runs, NA), na.rm = TRUE),
+    run_rate_home = mean(if_else(is_home == 1, runs, NA), na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+
+# Home run rate as numeric variable
+mlb_team_run_rate$run_rate_home <- as.numeric(mlb_team_run_rate$run_rate_home)
+# Away run rate as numeric variable
+mlb_team_run_rate$run_rate_away <- as.numeric(mlb_team_run_rate$run_rate_away)
+
+
+half_inning_data <- half_inning_data %>%
+  inner_join(mlb_team_run_rate, by = "team")
+
+```
+
+
+
+# Feature Building 
+
+### FIP
+```{r}
+# Group data by pitcher and calculate FIP components
+pitcher_stats <- statcast_2023_first_inning %>%
+  group_by(player_name) %>%
+  summarize(
+    HR = sum(events == "home_run"),
+    BB = sum(events == "walk"),
+    HBP = sum(events == "hit_by_pitch"),
+    K = sum(events == "strikeout"),
+    IP = sum(outs_when_up) / 3
+  )
+
+# Define FIP constant
+FIP_constant <- 3.2
+
+# Calculate FIP for each pitcher
+pitcher_stats <- pitcher_stats %>%
+  mutate(FIP = pmax((13 * HR + 3 * (BB + HBP) - 2 * K) / IP + FIP_constant, 0))
+
+pitcher_stats <- pitcher_stats %>%
+  select(c(player_name, FIP))
+
+
+# Join pitcher_stats with half_inning_data by player_name
+half_inning_data <- left_join(half_inning_data, pitcher_stats, by = c("pitcher" = "player_name"))
+
+half_inning_data$FIP <- half_inning_data$FIP.y
+
+half_inning_data <- half_inning_data %>%
+  select(-c(FIP.x, FIP.y, IP, K, HBP, HR, BB))
+
+```
+
+### K/9
+
+```{r}
+# Assuming you have a dataframe named statcast_data with columns 'player_name', 'events', and 'outs_when_up'
+
+# Filter the data for strikeouts
+strikeouts_data <- statcast_2023_first_inning %>%
+  filter(events == "strikeout")
+
+# Group data by pitcher and calculate total strikeouts and innings pitched
+pitcher_stats <- strikeouts_data %>%
+  group_by(player_name) %>%
+  summarize(
+    K = n(),  # Total strikeouts
+    IP = sum(outs_when_up) / 3  # Total innings pitched
+  )
+
+# Compute K/9 for each pitcher
+pitcher_stats <- pitcher_stats %>%
+  mutate(
+    K_per_9 = (K / IP) * 9
+  )
+
+# View the calculated K/9 for each pitcher
+print(pitcher_stats)
+
+
+
+```
+
+
+### HR Rate
+
+```{r}
+# Assuming you have a dataframe named statcast_data with columns 'team_name', 'events', and 'outs_when_up'
+
+# Filter the data for home runs
+home_runs_data <- statcast_2023_first_inning %>%
+  filter(events == "home_run")
+
+# Group data by team and calculate total home runs and innings pitched
+team_stats_home <- home_runs_data %>%
+  group_by(home_team) %>%
+  summarize(
+    HR = n(),  # Total home runs
+    IP = sum(outs_when_up)  # Total innings pitched
+  )
+
+# Compute HR/9 for each team
+team_stats_home <- team_stats %>%
+  mutate(
+    HR_per_9 = (HR / IP) * 9
+  )
+
+# Group data by team and calculate total home runs and innings pitched
+team_stats_away <- home_runs_data %>%
+  group_by(away_team) %>%
+  summarize(
+    HR = n(),  # Total home runs
+    IP = sum(outs_when_up)  # Total innings pitched
+  )
+
+# Compute HR/9 for each team
+team_stats_home <- team_stats %>%
+  mutate(
+    HR_per_9 = (HR / IP) * 9
+  )
+
+
+team_stats <- 
+
+# View the calculated HR/9 for each team
+print(team_stats)
 
 
 
