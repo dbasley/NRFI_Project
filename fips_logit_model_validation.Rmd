@@ -20,17 +20,19 @@ statcast_2023_first_inning$on_1b[is.na(statcast_2023_first_inning$on_1b)] <- "wo
 statcast_2023_first_inning$on_2b[is.na(statcast_2023_first_inning$on_2b)] <- "woo"
 statcast_2023_first_inning$on_3b[is.na(statcast_2023_first_inning$on_3b)] <- "woo"
 
-#statcast_2023_first_inning <- statcast_2023_first_inning[rev(1:nrow(statcast_2023_first_inning)), ]
+# statcast_2023_first_inning <- statcast_2023_first_inning[rev(1:nrow(statcast_2023_first_inning)), ]
 
 # Vector of Events that only include action events
 # Balls and Strikes that DO NOT result in walks or strikeouts excluded
-included_events <- c("double", "field_out", "force_out",
-                     "home_run", "sac_fly", "strikeout", "walk",
-                     "double_play", "fielders_choice",
-                     "sac_fly_double_play",
-                     "strikeout_double_play", "field_error",
-                     "fielders_choice_out", "hit_by_pitch", "sac_bunt", "single",
-                     "triple")
+included_events <- c(
+  "double", "field_out", "force_out",
+  "home_run", "sac_fly", "strikeout", "walk",
+  "double_play", "fielders_choice",
+  "sac_fly_double_play",
+  "strikeout_double_play", "field_error",
+  "fielders_choice_out", "hit_by_pitch", "sac_bunt", "single",
+  "triple"
+)
 
 
 # Filter statcast data for only action events
@@ -42,10 +44,12 @@ statcast_2023_first_inning <- statcast_2023_first_inning %>%
 # # Summarize half inning totals
 half_innings <- statcast_2023_first_inning %>%
   group_by(inning_topbot) %>%
-  summarize(outs_inning = sum(outs_when_up),
-            runs_inning = sum(post_bat_score),
-            runs_start = first(runs_before),
-            max_runs = runs_inning + runs_start)
+  summarize(
+    outs_inning = sum(outs_when_up),
+    runs_inning = sum(post_bat_score),
+    runs_start = first(runs_before),
+    max_runs = runs_inning + runs_start
+  )
 
 
 
@@ -60,16 +64,19 @@ statcast_2023_first_inning <- statcast_2023_first_inning %>%
   mutate(bases = paste0(
     if_else(on_1b == "woo", 0, 1),
     if_else(on_2b == "woo", 0, 1),
-    if_else(on_3b == "woo", 0, 1)))
-    
+    if_else(on_3b == "woo", 0, 1)
+  ))
+
 
 # Compute Pre and Post AB State
 statcast_2023_first_inning <- statcast_2023_first_inning %>%
-  mutate(state = paste(bases, outs_when_up),
-        new_state = case_when(
-          inning_topbot != lag(inning_topbot) ~ NA_character_,
-           TRUE ~ lag(state)
-         ))
+  mutate(
+    state = paste(bases, outs_when_up),
+    new_state = case_when(
+      inning_topbot != lag(inning_topbot) ~ NA_character_,
+      TRUE ~ lag(state)
+    )
+  )
 
 
 
@@ -87,12 +94,14 @@ statcast_2023_first_inning <- statcast_2023_first_inning %>%
 end_inning_data <- statcast_2023_first_inning %>%
   dplyr::select(c(game_date, game_pk, player_name, player_name, batter, post_home_score, post_away_score, inning_topbot, away_team, home_team)) %>%
   group_by(game_pk) %>%
-  mutate(away_runs = max(post_away_score),
-            home_runs = max(post_home_score),
-            total_runs = away_runs + home_runs,
-            home = home_team,
-            away = away_team) %>%
-  ungroup() 
+  mutate(
+    away_runs = max(post_away_score),
+    home_runs = max(post_home_score),
+    total_runs = away_runs + home_runs,
+    home = home_team,
+    away = away_team
+  ) %>%
+  ungroup()
 
 # Group data by pitcher and calculate FIP components
 pitcher_stats <- statcast_2023_first_inning %>%
@@ -117,11 +126,13 @@ pitcher_stats <- pitcher_stats %>%
 
 # Home team indicator variable
 end_inning_data <- end_inning_data %>%
-  mutate(is_home = ifelse(inning_topbot == "Bot", 1, 0)) 
+  mutate(is_home = ifelse(inning_topbot == "Bot", 1, 0))
 
 end_inning_data <- end_inning_data %>%
-  mutate(team = if_else(is_home == 1, home, away),
-         runs = if_else(is_home == 1, home_runs, away_runs)) 
+  mutate(
+    team = if_else(is_home == 1, home, away),
+    runs = if_else(is_home == 1, home_runs, away_runs)
+  )
 
 
 # Selecting required columns
@@ -130,17 +141,21 @@ new_dataset <- end_inning_data %>%
 
 half_inning_summary <- end_inning_data %>%
   group_by(game_pk, is_home) %>%
-  summarize(team = first(team),
-            runs = if_else(first(is_home) == 1, max(home_runs), max(away_runs)),
-            pitcher = first(player_name),
-            PA = n_distinct(batter),
-            date = first(game_date)) %>%
+  summarize(
+    team = first(team),
+    runs = if_else(first(is_home) == 1, max(home_runs), max(away_runs)),
+    pitcher = first(player_name),
+    PA = n_distinct(batter),
+    date = first(game_date)
+  ) %>%
   ungroup()
 
 team_info <- end_inning_data %>%
   group_by(game_pk) %>%
-  summarise(home_team = first(home),
-            away_team = first(away)) %>%
+  summarise(
+    home_team = first(home),
+    away_team = first(away)
+  ) %>%
   ungroup()
 
 
@@ -177,7 +192,7 @@ inning_summary <- half_inning_data %>%
     away_team = first(away_team),
     home_runs = sum(if_else(is_home == 1, runs, 0)),
     away_runs = sum(if_else(is_home == 0, runs, 0)),
-    total_runs = if_else(home_runs + away_runs == 0, "NRFI", "YRFI"),
+    zero_runs = if_else(home_runs + away_runs == 0, 0, 1),
     home_run_rate = first(run_rate_home),
     away_run_rate = first(run_rate_away),
     home_pitcher = first(pitcher),
@@ -206,17 +221,19 @@ statcast_2024_first_inning$on_1b[is.na(statcast_2024_first_inning$on_1b)] <- "wo
 statcast_2024_first_inning$on_2b[is.na(statcast_2024_first_inning$on_2b)] <- "woo"
 statcast_2024_first_inning$on_3b[is.na(statcast_2024_first_inning$on_3b)] <- "woo"
 
-#statcast_2024_first_inning <- statcast_2024_first_inning[rev(1:nrow(statcast_2024_first_inning)), ]
+# statcast_2024_first_inning <- statcast_2024_first_inning[rev(1:nrow(statcast_2024_first_inning)), ]
 
 # Vector of Events that only include action events
 # Balls and Strikes that DO NOT result in walks or strikeouts excluded
-included_events <- c("double", "field_out", "force_out",
-                     "home_run", "sac_fly", "strikeout", "walk",
-                     "double_play", "fielders_choice",
-                     "sac_fly_double_play",
-                     "strikeout_double_play", "field_error",
-                     "fielders_choice_out", "hit_by_pitch", "sac_bunt", "single",
-                     "triple")
+included_events <- c(
+  "double", "field_out", "force_out",
+  "home_run", "sac_fly", "strikeout", "walk",
+  "double_play", "fielders_choice",
+  "sac_fly_double_play",
+  "strikeout_double_play", "field_error",
+  "fielders_choice_out", "hit_by_pitch", "sac_bunt", "single",
+  "triple"
+)
 
 
 # Filter statcast data for only action events
@@ -228,10 +245,12 @@ statcast_2024_first_inning <- statcast_2024_first_inning %>%
 # # Summarize half inning totals
 half_innings <- statcast_2024_first_inning %>%
   group_by(inning_topbot) %>%
-  summarize(outs_inning = sum(outs_when_up),
-            runs_inning = sum(post_bat_score),
-            runs_start = first(runs_before),
-            max_runs = runs_inning + runs_start)
+  summarize(
+    outs_inning = sum(outs_when_up),
+    runs_inning = sum(post_bat_score),
+    runs_start = first(runs_before),
+    max_runs = runs_inning + runs_start
+  )
 
 
 
@@ -246,16 +265,19 @@ statcast_2024_first_inning <- statcast_2024_first_inning %>%
   mutate(bases = paste0(
     if_else(on_1b == "woo", 0, 1),
     if_else(on_2b == "woo", 0, 1),
-    if_else(on_3b == "woo", 0, 1)))
-    
+    if_else(on_3b == "woo", 0, 1)
+  ))
+
 
 # Compute Pre and Post AB State
 statcast_2024_first_inning <- statcast_2024_first_inning %>%
-  mutate(state = paste(bases, outs_when_up),
-        new_state = case_when(
-          inning_topbot != lag(inning_topbot) ~ NA_character_,
-           TRUE ~ lag(state)
-         ))
+  mutate(
+    state = paste(bases, outs_when_up),
+    new_state = case_when(
+      inning_topbot != lag(inning_topbot) ~ NA_character_,
+      TRUE ~ lag(state)
+    )
+  )
 
 
 
@@ -273,12 +295,14 @@ statcast_2024_first_inning <- statcast_2024_first_inning %>%
 end_inning_data <- statcast_2024_first_inning %>%
   dplyr::select(c(game_date, game_pk, player_name, player_name, batter, post_home_score, post_away_score, inning_topbot, away_team, home_team)) %>%
   group_by(game_pk) %>%
-  mutate(away_runs = max(post_away_score),
-            home_runs = max(post_home_score),
-            total_runs = away_runs + home_runs,
-            home = home_team,
-            away = away_team) %>%
-  ungroup() 
+  mutate(
+    away_runs = max(post_away_score),
+    home_runs = max(post_home_score),
+    total_runs = away_runs + home_runs,
+    home = home_team,
+    away = away_team
+  ) %>%
+  ungroup()
 
 # Group data by pitcher and calculate FIP components
 pitcher_stats <- statcast_2024_first_inning %>%
@@ -303,11 +327,13 @@ pitcher_stats <- pitcher_stats %>%
 
 # Home team indicator variable
 end_inning_data <- end_inning_data %>%
-  mutate(is_home = ifelse(inning_topbot == "Bot", 1, 0)) 
+  mutate(is_home = ifelse(inning_topbot == "Bot", 1, 0))
 
 end_inning_data <- end_inning_data %>%
-  mutate(team = if_else(is_home == 1, home, away),
-         runs = if_else(is_home == 1, home_runs, away_runs)) 
+  mutate(
+    team = if_else(is_home == 1, home, away),
+    runs = if_else(is_home == 1, home_runs, away_runs)
+  )
 
 
 # Selecting required columns
@@ -316,17 +342,21 @@ new_dataset <- end_inning_data %>%
 
 half_inning_summary <- end_inning_data %>%
   group_by(game_pk, is_home) %>%
-  summarize(team = first(team),
-            runs = if_else(first(is_home) == 1, max(home_runs), max(away_runs)),
-            pitcher = first(player_name),
-            PA = n_distinct(batter),
-            date = first(game_date)) %>%
+  summarize(
+    team = first(team),
+    runs = if_else(first(is_home) == 1, max(home_runs), max(away_runs)),
+    pitcher = first(player_name),
+    PA = n_distinct(batter),
+    date = first(game_date)
+  ) %>%
   ungroup()
 
 team_info <- end_inning_data %>%
   group_by(game_pk) %>%
-  summarise(home_team = first(home),
-            away_team = first(away)) %>%
+  summarise(
+    home_team = first(home),
+    away_team = first(away)
+  ) %>%
   ungroup()
 
 
@@ -363,7 +393,7 @@ inning_summary <- half_inning_data %>%
     away_team = first(away_team),
     home_runs = sum(if_else(is_home == 1, runs, 0)),
     away_runs = sum(if_else(is_home == 0, runs, 0)),
-    total_runs = if_else(home_runs + away_runs == 0, "NRFI", "YRFI"),
+    zero_runs = if_else(home_runs + away_runs == 0, 0, 1),
     home_run_rate = first(run_rate_home),
     away_run_rate = first(run_rate_away),
     home_pitcher = first(pitcher),
@@ -382,23 +412,28 @@ inning_summary2024 <- inning_summary %>%
 # Validate using 2024 as holdout
 
 ```{r}
+library(tidyverse)
+library(xgboost)
 train <- inning_summary2023
 test <- inning_summary2024
 
-nrfi_model_logit <- stan_glmer(as.factor(total_runs) ~  home_run_rate + away_run_rate +
-                                   home_fip + away_fip + 
-                                   (1 | home_team) + (1 | away_team) + 
-                                   (1 | home_pitcher) + (1 | away_pitcher),
-                              family = binomial,
-                              data = inning_summary,
-                              cores = 8,
-                              iter = 2000 * 2,
-                              seed = 2015,
-                              chains = 4)
+nrfi_model_logit <- stan_glmer(
+  as.factor(total_runs) ~ home_run_rate + away_run_rate +
+    home_fip + away_fip +
+    (1 | home_team) + (1 | away_team) +
+    (1 | home_pitcher) + (1 | away_pitcher),
+  family = binomial,
+  data = inning_summary,
+  cores = 8,
+  iter = 2000 * 2,
+  seed = 2015,
+  chains = 4
+)
 
 nrfi_logit_preds_test <- posterior_predict(nrfi_model_logit,
-                                           newdata = test,
-                                           seed = 20)
+  newdata = test,
+  seed = 20
+)
 
 
 nrfi_pred <- as.vector(ifelse(colMeans(nrfi_logit_preds_test) > 0.5, 1, 0))
@@ -410,5 +445,117 @@ actual_nrfi <- ifelse(test$total_runs == "NRFI", 1, 0)
 sum(nrfi_pred == actual_nrfi) / length(actual_nrfi)
 ```
 
+```{r}
+train <- inning_summary2023
+test <- inning_summary2024
 
+# Assuming your data frame is named inning_summary
+# Convert zero_runs to binary (0/1)
+train$zero_runs <- as.integer(train$zero_runs == "1")
+test$zero_runs <- as.integer(test$zero_runs == "1")
 
+# Specify predictors (X) and response variable (y)
+X_train <- train[, c(
+  "home_run_rate", "away_run_rate", "home_fip", "away_fip"  #,
+   #"home_team", "away_team"
+)]
+
+X_test <- test[, c(
+  "home_run_rate", "away_run_rate", "home_fip", "away_fip"  #,
+   #"home_team", "away_team"
+)]
+
+y_train <- train$zero_runs
+
+y_test <- test$zero_runs
+
+# Convert categorical variables to dummy variables
+X_train <- model.matrix(~ . - 1, data = X_train)
+
+X_test <- model.matrix(~ . - 1, data = X_test)
+
+# Convert data to xgboost DMatrix format
+dtrain <- xgb.DMatrix(data = as.matrix(X_train), label = y_train)
+
+dtest <- xgb.DMatrix(data = as.matrix(X_test), label = y_test)
+
+accuracy_list <- c()
+depth_list <- c()
+eta_list <- c()
+gamma_list <- c()
+subsample_list <- c()
+colsample_list <- c()
+
+for (i in 2:6) {
+  print("depth: ")
+  print(i)
+  max_depth <- i
+  for (j in 2:6) {
+    print("eta: ")
+    print(j / 10)
+    eta <- j / 10
+    for (k in 0:2) {
+      gamma <- k
+      for (l in 6:9) {
+        subsample <- l / 10
+        for (m in 6:9) {
+          colsample <- m / 10
+          # Specify model parameters
+          params <- list(
+            objective = "binary:logistic",
+            eval_metric = "logloss",
+            max_depth = max_depth,
+            eta = eta,
+            gamma = gamma,
+            subsample = subsample,
+            colsample_bytree = colsample
+          )
+
+          # Train xgboost model
+          xgb_model <- xgboost(params = params, data = dtrain, nrounds = 100)
+          # Make predictions on the training data
+          pred <- predict(xgb_model, dtest)
+
+          # Convert predicted probabilities to binary predictions
+          pred_binary <- ifelse(pred > 0.5, 1, 0)
+
+          accuracy <- mean(pred_binary == y_test)
+          accuracy_list <- c(accuracy_list, accuracy)
+          depth_list <- c(depth_list, max_depth)
+          eta_list <- c(eta_list, eta)
+          gamma_list <- c(gamma_list, gamma)
+          subsample_list <- c(subsample_list, subsample)
+          colsample_list <- c(colsample_list, colsample)
+        }
+      }
+    }
+  }
+}
+
+accuracy_params <- data.frame(accuracy_list, depth_list, eta_list, gamma_list, subsample_list,colsample_list)
+
+filter(accuracy_params, accuracy_list > max(accuracy_list) - 0.02)
+
+# Specify model parameters
+params <- list(
+  objective = "binary:logistic",
+  eval_metric = "logloss",
+  max_depth = 5,
+  colsample_bytree = 0.8
+  # Add other parameters as needed
+)
+
+# Train xgboost model
+xgb_model <- xgboost(params = params, data = dtrain, nrounds = 1000)
+
+# Optionally, you can evaluate the model's performance using appropriate metrics
+# For example, you can use cross-validation, ROC curve, AUC, etc.
+
+# Make predictions on the training data
+pred <- predict(xgb_model, dtest)
+
+# Convert predicted probabilities to binary predictions
+pred_binary <- ifelse(pred > 0.5, 1, 0)
+
+mean(pred_binary == y_test)
+```
