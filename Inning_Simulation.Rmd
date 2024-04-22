@@ -489,72 +489,78 @@ cat("Accuracy from classifying every game as a NRFI:", accuracy_NRFI_win, "%")
 ```{r}
 
 
-# # Set-up number of sims as a global parameter:
+# # # Set-up number of sims as a global parameter:
 # N_SIMS <- 1000
 # 
 # # Put it all together:
-# pred_game_outcomes <- 
+# pred_game_outcomes <-
 #   map_dfr(1:nrow(game_summary),
 #           function(game_i) {
-#             
+# 
 #             # First gather the match_i data:
 #             game_i_data <- game_summary[game_i,]
-#             
+# 
 #             # Retrieve home and away run rate parameters
 #             home_team_params <- summary_table %>%
 #               filter(team == game_i_data$home_team) %>%
 #               select(posterior_shape_home, posterior_rate_home) %>%
 #               unlist() %>%
 #               as.numeric()
-#             
+# 
 #             away_team_params <- summary_table %>%
 #               filter(team == game_i_data$away_team) %>%
 #               select(posterior_shape_away, posterior_rate_away) %>%
 #               unlist() %>%
 #               as.numeric()
-#             
+# 
 #             # Retrieve starting pitcher parameters for home team
 #             home_pitcher_params <- pitcher_info %>%
 #               filter(team == game_i_data$home_team) %>%
 #               select(posterior_shape, posterior_rate) %>%
 #               unlist() %>%
 #               as.numeric()
-#             
+# 
 #             # Retrieve starting pitcher parameters for away team
 #             away_pitcher_params <- pitcher_info %>%
 #               filter(team == game_i_data$away_team) %>%
 #               select(posterior_shape, posterior_rate) %>%
 #               unlist() %>%
 #               as.numeric()
-#             
+# 
 #             # Combine home and pitcher parameters
 #             home_combined_params <- c(home_team_params, home_pitcher_params)
 #             away_combined_params <- c(away_team_params, away_pitcher_params)
-#             
+# 
 #             # And now use the function from part (a) to generate run values
 #             # for home team with combined parameters:
 #             home_runs <- sim_team_runs(N_SIMS, home_combined_params[1], home_combined_params[2])
-#             
+# 
 #             # Repeat for away team with combined parameters:
 #             away_runs <- sim_team_runs(N_SIMS, away_combined_params[1], away_combined_params[2])
-#             
+# 
 #             # Determine pairwise whether or not home_win, away_win, or tie across
 #             # the N_SIMS:
 #             sim_outcomes <- ifelse(away_runs + home_runs == 0, "NRFI","YRFI")
-#             
+# 
 #             # Return a tibble that has the match id, actual outcome, and predicted probs
 #             # for each of the outcomes:
-#             tibble(game_pk = game_i_data$game_pk,
+#            tibble(game_pk = game_i_data$game_pk,
 #                    outcome = game_i_data$total_runs,
-#                    NRFI_win_prob = mean(sim_outcomes == "NRFI"),
-#                    NRFI_lose_prob = mean(sim_outcomes == "YRFI"))
+#                    NRFI_win_prob = length(which(sim_outcomes == "NRFI")) / N_SIMS,
+#                    NRFI_lose_prob = length(which(sim_outcomes == "YRFI")) / N_SIMS)
 #             
 #           })
 # 
 # pred_game_outcomes
-# 
-# 
+
+
 
 
 
 ```
+
+
+
+
+
+
