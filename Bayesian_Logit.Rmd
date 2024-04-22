@@ -165,7 +165,7 @@ inning_summary <- half_inning_data %>%
     away_team = first(away_team),
     home_runs = sum(if_else(is_home == 1, runs, 0)),
     away_runs = sum(if_else(is_home == 0, runs, 0)),
-    total_runs = if_else(home_runs + away_runs == 0, "NRFI", "YRFI"),
+    zero_runs = if_else(home_runs + away_runs == 0, "0", "1"),
     home_run_rate = first(run_rate_home),
     away_run_rate = first(run_rate_away),
     home_pitcher = first(pitcher),
@@ -225,7 +225,7 @@ print(final_data)
 
 library(rstanarm)
 options(mc.cores = parallel::detectCores())
-team_runs_model <- stan_glmer(runs ~ is_home + run_rate_home + run_rate_away + (1 | home_team) + (1 | away_team) + (1 | pitcher),
+team_runs_model <- stan_glmer(runs ~ is_home + run_rate_home + FIP + PA + run_rate_away + (1 | home_team) + (1 | away_team) + (1 | pitcher),
                               family = poisson,
                               data = half_inning_data,
                               cores = 8,
@@ -241,20 +241,20 @@ team_runs_model <- stan_glmer(runs ~ is_home + run_rate_home + run_rate_away + (
 ```{r}
 
 
-nrfi_preds <- posterior_predict(team_runs_model, newdata = half_inning_data, seed = 2023)
+#nrfi_preds <- posterior_predict(team_runs_model, newdata = half_inning_data, seed = 2023)
 
-nrfi_preds_home <- posterior_predict(team_runs_model, newdata = tibble(home_team = "BOS",
-                                                                  away_team = "BAL",
-                                                                  is_home = 1,
-                                                                  run_rate_home = 0.6913580,
-                                                                  run_rate_away = 0.3333333,
-                                                                  pitcher = "Gibson, Kyle"), seed = 15)
-nrfi_preds_away <- posterior_predict(team_runs_model, newdata = tibble(home_team = "BOS",
-                                                                  away_team = "BAL",
-                                                                  is_home = 0,
-                                                                  run_rate_home = 0.6419753,
-                                                                  run_rate_away = 0.3950617,
-                                                                  pitcher = "Kluber, Corey"), seed = 15)
+nrfi_preds_poisson <- posterior_predict(team_runs_model, newdata = select(half_inning_data, c(is_home,
+                                                       away_team,
+                                                       home_team,
+                                                       pitcher,
+                                                       run_rate_away,
+                                                       run_rate_home,
+                                                       FIP,
+                                                       PA)), seed = 30)
+
+
+
+                                         
 par(mfrow=c(1,2))
 hist(nrfi_preds_home, main = "CLE Runs vs SEA", 
      xlab = "# of Runs")
@@ -280,6 +280,27 @@ nrfi_model_logit <- stan_glmer(as.factor(total_runs) ~  home_run_rate + away_run
                               iter = 2000 * 2,
                               seed = 2015,
                               chains = 4)
+
+
+library(lme4)
+x <- glmer(as.factor(zero_runs) ~  home_run_rate + away_run_rate +
+                                 home_fip + away_fip + (1 | home_team) + (1 | away_team) + 
+                                 (1 | home_pitcher) + (1 | away_pitcher),
+                              family = binomial,
+                              data = inning_summary)
+summary(x)
+
+pred_probs <- predict(x, newdata = inning_summary, type = "response")
+
+prediction <- ifelse(pred_probs > 0.5, "NRFI", "YRFI")
+
+
+inning_summary$pred_outcome <- prediction
+
+accuracy <- mean(prediction == inning_summary$zero_runs) * 100
+
+# Print accuracy
+cat("Prediction Accuracy:", accuracy, "%")
 
 
 nrfi_logit_preds <- posterior_predict(nrfi_model_logit,
@@ -412,10 +433,10 @@ pitcher_stats <- pitcher_stats %>%
 # Join pitcher_stats with half_inning_data by player_name
 half_inning_data <- left_join(half_inning_data, pitcher_stats, by = c("pitcher" = "player_name"))
 
-half_inning_data$FIP <- half_inning_data$FIP.y
-
-half_inning_data <- half_inning_data %>%
-  select(-c(FIP.x, FIP.y, IP, K, HBP, HR, BB))
+# half_inning_data$FIP <- half_inning_data$FIP.y
+# 
+# half_inning_data <- half_inning_data %>%
+#   select(-c(FIP.x, FIP.y, IP, K, HBP, HR, BB))
 
 ```
 
@@ -468,7 +489,7 @@ team_stats_home <- home_runs_data %>%
   )
 
 # Compute HR/9 for each team
-team_stats_home <- team_stats %>%
+team_stats_home <- team_stats_home %>%
   mutate(
     HR_per_9 = (HR / IP) * 9
   )
@@ -482,18 +503,131 @@ team_stats_away <- home_runs_data %>%
   )
 
 # Compute HR/9 for each team
-team_stats_home <- team_stats %>%
+team_stats_away <- team_stats_away %>%
   mutate(
     HR_per_9 = (HR / IP) * 9
   )
 
 
-team_stats <- 
+# Merge home and away team stats
+combined_team_stats <- bind_rows(
+  mutate(team_stats_home, team = home_team),
+  mutate(team_stats_away, team = away_team)
+) %>%
+  group_by(team) %>%
+  summarise(
+    HR = sum(HR),  # Total home runs
+    IP = sum(IP)  # Total innings pitched
+  ) %>%
+  mutate(
+    HR_per_9 = (HR / IP) * 9  # Calculate HR/9
+  )
+
+# Display combined team stats
+print(combined_team_stats)
+
 
 # View the calculated HR/9 for each team
-print(team_stats)
+#print(team_stats)
 
 
+
+
+```
+
+
+
+# Runs Against Rate
+
+```{r}
+
+# Calculate total runs scored against each team
+total_runs_against <- end_inning_data %>%
+  group_by(team) %>%
+  summarise(total_runs_against = sum(runs))
+
+# Count total innings played by each team
+total_innings_played <- end_inning_data %>%
+  group_by(team) %>%
+  summarise(total_innings = n_distinct(game_pk))
+
+# Merge total runs against and total innings played data
+runs_against_data <- total_runs_against %>%
+  left_join(total_innings_played, by = "team")
+
+# Compute runs against rate
+runs_against_data <- runs_against_data %>%
+  mutate(runs_against_rate = total_runs_against / total_innings)
+
+
+print(runs_against_data)
+
+
+```
+
+
+
+
+```{r}
+
+# Load necessary libraries
+library(xgboost)
+
+# Assuming your data frame is named inning_summary
+# Convert zero_runs to binary (0/1)
+inning_summary$zero_runs <- as.integer(inning_summary$zero_runs == "1")
+
+# Specify predictors (X) and response variable (y)
+X <- inning_summary[, c("home_run_rate", "away_run_rate", "home_fip", "away_fip")]
+
+
+y <- inning_summary$zero_runs
+
+# Convert categorical variables to dummy variables
+X <- model.matrix(~ . - 1, data = X)
+
+# Convert data to xgboost DMatrix format
+dtrain <- xgb.DMatrix(data = as.matrix(X), label = y)
+
+# Specify model parameters
+params <- list(
+  objective = "binary:logistic",
+  eval_metric = "logloss"
+  # Add other parameters as needed
+)
+
+# Train xgboost model
+xgb_model <- xgboost(params = params, data = dtrain, nrounds = 100)
+
+# Optionally, you can evaluate the model's performance using appropriate metrics
+# For example, you can use cross-validation, ROC curve, AUC, etc.
+
+# Make predictions on the training data
+pred <- predict(xgb_model, dtrain)
+
+# Convert predicted probabilities to binary predictions
+pred_binary <- ifelse(pred > 0.5, 1, 0)
+
+# Assess the model
+conf_matrix <- table(Actual = y, Predicted = pred_binary)
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+precision <- conf_matrix[2, 2] / sum(conf_matrix[, 2])
+recall <- conf_matrix[2, 2] / sum(conf_matrix[2, ])
+f1_score <- 2 * precision * recall / (precision + recall)
+
+# Print evaluation metrics
+cat("Confusion Matrix:\n")
+print(conf_matrix)
+cat("\nAccuracy:", accuracy)
+cat("\nPrecision:", precision)
+cat("\nRecall:", recall)
+cat("\nF1 Score:", f1_score)
+
+# Plot ROC curve and calculate AUC
+roc <- roc(y, pred)
+plot(roc, main = "ROC Curve")
+auc <- auc(roc)
+cat("\nAUC-ROC:", auc)
 
 
 ```
