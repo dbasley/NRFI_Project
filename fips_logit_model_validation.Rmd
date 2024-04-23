@@ -269,9 +269,9 @@ park <- park[, c(4, 5, 17)]
 half_inning_data <- half_inning_data %>% 
   left_join(park, by = c("home_team" = "team"))
 
-half_inning_data <- half_inning_data[, c(1:22, 25, 26)]
-colnames(half_inning_data)[23] <- "park_factor_1yr"
-colnames(half_inning_data)[24] <- "park_factor_3yr"
+#half_inning_data <- half_inning_data[, c(1:22, 25, 26)]
+colnames(half_inning_data)[23] <- "park_factor_3yr"
+colnames(half_inning_data)[24] <- "park_factor_1yr"
 
 inning_summary <- half_inning_data %>%
   group_by(game_pk) %>%
