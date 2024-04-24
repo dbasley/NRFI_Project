@@ -664,8 +664,10 @@ sum(nrfi_pred == actual_nrfi) / length(actual_nrfi)
 ```
 
 ```{r}
-train <- inning_summary2023
-test <- inning_summary2024
+train <- na.omit(inning_summary2023)
+test <- na.omit(inning_summary2024)
+train
+
 
 # Assuming your data frame is named inning_summary
 # Convert zero_runs to binary (0/1)
@@ -674,13 +676,17 @@ test$zero_runs <- as.integer(test$zero_runs == "1")
 
 # Specify predictors (X) and response variable (y)
 X_train <- train[, c(
-  "home_run_rate", "away_run_rate", "home_fip", "away_fip"  #,
-   #"home_team", "away_team"
+  "home_run_rate", "away_run_rate", "home_fip", "away_fip", "park_factor_1", "park_factor_3",
+  "home_ch", "away_ch", "home_cu", "away_cu", "home_fc", "away_fc", "home_ff", "away_ff",
+  "home_fs", "away_fs", "home_kc", "away_kc", "home_si", "away_si", "home_sl", "away_sl",
+  "home_st", "away_st"
 )]
 
 X_test <- test[, c(
-  "home_run_rate", "away_run_rate", "home_fip", "away_fip"  #,
-   #"home_team", "away_team"
+  "home_run_rate", "away_run_rate", "home_fip", "away_fip", "park_factor_1", "park_factor_3",
+  "home_ch", "away_ch", "home_cu", "away_cu", "home_fc", "away_fc", "home_ff", "away_ff",
+  "home_fs", "away_fs", "home_kc", "away_kc", "home_si", "away_si", "home_sl", "away_sl",
+  "home_st", "away_st"
 )]
 
 y_train <- train$zero_runs
@@ -704,11 +710,11 @@ gamma_list <- c()
 subsample_list <- c()
 colsample_list <- c()
 
-for (i in 2:6) {
+for (i in 2:5) {
   print("depth: ")
   print(i)
   max_depth <- i
-  for (j in 2:6) {
+  for (j in 1:5) {
     print("eta: ")
     print(j / 10)
     eta <- j / 10
@@ -717,6 +723,8 @@ for (i in 2:6) {
       for (l in 6:9) {
         subsample <- l / 10
         for (m in 6:9) {
+            for (n in 1:5) { 
+                small_acc = c()
           colsample <- m / 10
           # Specify model parameters
           params <- list(
@@ -730,15 +738,18 @@ for (i in 2:6) {
           )
 
           # Train xgboost model
-          xgb_model <- xgboost(params = params, data = dtrain, nrounds = 100)
+          xgb_model <- xgboost(params = params, data = dtrain, nrounds = 50)
           # Make predictions on the training data
           pred <- predict(xgb_model, dtest)
 
           # Convert predicted probabilities to binary predictions
           pred_binary <- ifelse(pred > 0.5, 1, 0)
-
-          accuracy <- mean(pred_binary == y_test)
-          accuracy_list <- c(accuracy_list, accuracy)
+            acc_small <- mean(pred_binary == y_test)
+            small_acc <- c(small_acc, acc_small)
+            
+            }
+            
+          accuracy_list <- c(accuracy_list, mean(small_acc))
           depth_list <- c(depth_list, max_depth)
           eta_list <- c(eta_list, eta)
           gamma_list <- c(gamma_list, gamma)
@@ -752,19 +763,22 @@ for (i in 2:6) {
 
 accuracy_params <- data.frame(accuracy_list, depth_list, eta_list, gamma_list, subsample_list,colsample_list)
 
-filter(accuracy_params, accuracy_list > max(accuracy_list) - 0.02)
+filter(accuracy_params, accuracy_list > max(accuracy_list) - 0.01)
 
 # Specify model parameters
 params <- list(
   objective = "binary:logistic",
   eval_metric = "logloss",
-  max_depth = 5,
-  colsample_bytree = 0.8
+  max_depth = 2,
+  colsample_bytree = 0.8,
+  eta=0.1,
+  subsample = 0.7,
+  gamma=1
   # Add other parameters as needed
 )
 
 # Train xgboost model
-xgb_model <- xgboost(params = params, data = dtrain, nrounds = 1000)
+xgb_model <- xgboost(params = params, data = dtrain, nrounds = 50)
 
 # Optionally, you can evaluate the model's performance using appropriate metrics
 # For example, you can use cross-validation, ROC curve, AUC, etc.
@@ -773,7 +787,7 @@ xgb_model <- xgboost(params = params, data = dtrain, nrounds = 1000)
 pred <- predict(xgb_model, dtest)
 
 # Convert predicted probabilities to binary predictions
-pred_binary <- ifelse(pred > 0.5, 1, 0)
+pred_binary <- ifelse(pred > 0.50, 1, 0)
 
 mean(pred_binary == y_test)
 ```
