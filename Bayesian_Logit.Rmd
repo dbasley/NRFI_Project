@@ -271,7 +271,7 @@ hist(nrfi_preds_away, main = "SEA Runs vs CLE",
 
 ```{r}
 
-nrfi_model_logit <- stan_glmer(as.factor(total_runs) ~  home_run_rate + away_run_rate +
+nrfi_model_logit <- stan_glmer(as.factor(zero_runs) ~  home_run_rate + away_run_rate +
                                  home_fip + away_fip + (1 | home_team) + (1 | away_team) + 
                                  (1 | home_pitcher) + (1 | away_pitcher),
                               family = binomial,
@@ -281,13 +281,26 @@ nrfi_model_logit <- stan_glmer(as.factor(total_runs) ~  home_run_rate + away_run
                               seed = 2015,
                               chains = 4)
 
+posterior <- as.matrix(nrfi_model_logit)
+plot_title <- ggtitle("Posterior distributions",
+                      "with medians and 80% intervals")
+
+mcmc_areas(posterior,
+           #pars = c("cyl", "drat", "am", "wt"),
+           prob = 0.8) + plot_title
+
+library(bayesplot)
+
+baye
 
 library(lme4)
-x <- glmer(as.factor(zero_runs) ~  home_run_rate + away_run_rate +
+
+nrfi_logit <- glmer(as.factor(zero_runs) ~  home_run_rate + away_run_rate +
                                  home_fip + away_fip + (1 | home_team) + (1 | away_team) + 
                                  (1 | home_pitcher) + (1 | away_pitcher),
                               family = binomial,
                               data = inning_summary)
+
 summary(x)
 
 pred_probs <- predict(x, newdata = inning_summary, type = "response")
@@ -354,6 +367,7 @@ accuracy <- mean(comparison$predicted_outcome == comparison$total_runs)
 
 # Print accuracy
 print(paste("Accuracy:", accuracy))
+
 
 
 
@@ -427,7 +441,7 @@ pitcher_stats <- pitcher_stats %>%
   mutate(FIP = pmax((13 * HR + 3 * (BB + HBP) - 2 * K) / IP + FIP_constant, 0))
 
 pitcher_stats <- pitcher_stats %>%
-  select(c(player_name, FIP))
+  dplyr::select(c(player_name, FIP))
 
 
 # Join pitcher_stats with half_inning_data by player_name
@@ -578,7 +592,7 @@ library(xgboost)
 inning_summary$zero_runs <- as.integer(inning_summary$zero_runs == "1")
 
 # Specify predictors (X) and response variable (y)
-X <- inning_summary[, c("home_run_rate", "away_run_rate", "home_fip", "away_fip")]
+X <- inning_summary[, c("home_run_rate", "away_run_rate", "home_fip", "away_fip", "home_pitcher", "away_pitcher")]
 
 
 y <- inning_summary$zero_runs
@@ -623,6 +637,7 @@ cat("\nPrecision:", precision)
 cat("\nRecall:", recall)
 cat("\nF1 Score:", f1_score)
 
+library(pROC)
 # Plot ROC curve and calculate AUC
 roc <- roc(y, pred)
 plot(roc, main = "ROC Curve")

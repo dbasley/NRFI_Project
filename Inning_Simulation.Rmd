@@ -204,7 +204,7 @@ mlb_team_run_rate$run_rate_home <- as.numeric(mlb_team_run_rate$run_rate_home)
 # Away run rate as numeric variable
 mlb_team_run_rate$run_rate_away <- as.numeric(mlb_team_run_rate$run_rate_away)
 
-
+library(MASS)
 # Estimate prior shape and rate for home gamma distribution
 home_run_rate_gamma <- fitdistr(mlb_team_run_rate$run_rate_home, dgamma, 
                                list(shape = 5, rate = 4))
