@@ -1000,16 +1000,13 @@ To achieve more uncertainty, we then converted this same multilevel model into a
 
 # Results
 
-The accuracy of these models is assessed by accuracy scores, however we kept in mind that successful betting algorithms must be approximately 60% or better to be profitable as many of these NRFI bets have favorable odds for occuring. 
+The accuracy of these models is assessed by accuracy scores, however we kept in mind that successful betting algorithms must be approximately 60% or better to be profitable as many of these NRFI bets have favorable odds for occurring. 
 
-The initial multilevel model failed to hit our benchmark accuracy of 60% as it scored approximately 42% accuracy. With its poor performance, bettor’s would be better suited guessing NRFI or YRFI for every game.
+The initial multilevel model failed to hit our benchmark accuracy of 60% as it scored approximately 42% accuracy. With its poor performance, bettor’s would be better suited guessing NRFI or YRFI for every game. So then we switched to our 2 Bayesian multilevel models with the logistic and poisson families.
 
+Our Poisson Bayesian multilevel model performed better than the initial multilevel model with an accuracy score of 56.13%. While this is much better performance, it was still on the edge of profitability. The logistic Bayesian multilevel model we implemented also achieved a barely profitable accuracy score of approximately 58.64%. After our unsatisfactory results from the Bayesian multilevel modeling, we took a different approach by implementing extreme gradient boosting (XGBoost). XGBoost trains a series of decision trees where each subsequent tree is an improvement of the last. The process then optimizes both the loss function and the regularization term. Using this process is an improvement from our models as both interactions and feature importance will be much more sound than our previous experimentation approach. 
 
-The Bayesian multilevel model we implemented also achieved a non-profitable accuracy score of approximately 49.7%. The Bayesian model’s highest posterior probability was 49.7% and its lowest posterior probability was 8%, meaning this model is slightly worse than guessing NRFI or YRFI every game.
-
-After our unsatisfactory results from multilevel modeling, we took a different approach by implementing extreme gradient boosting (XGBoost). XGBoost trains a series of decision trees where each subsequent tree is an improvement of the last. The process then optimizes both the loss function and the regularization term. Using this process is an improvement from our models as both interactions and feature importance will be much more sound than our previous experimentation approach. 
-
-When training the model, we used 24 features for both home team and away teams to predict a NRFI occurring. We then used an iterative process to find the ideal tuning parameters to return a model that consistently produced the highest accuracy. The XGBoost model that we implemented was far superior in performance compared to our other modeling attempts, achieving 90% accuracy on the 2023 data it was trained on and 71.5% accuracy on 2024 games when used as holdout data. This accuracy falls well above our aim of approximately 60% accuracy to be profitable.
+When training the model, we used 24 features for both home team and away teams to predict a NRFI occurring. We then used an iterative process to find the ideal tuning parameters to return a model that consistently produced the highest accuracy. The XGBoost model that we implemented was far superior in performance compared to our other modeling attempts, achieving 90% accuracy on the 2023 data it was trained on and 67% accuracy on 2024 games when used as holdout data. This accuracy falls well above our aim of approximately 60% accuracy to be profitable.
 
 ```{r, echo=FALSE, fig.cap="Confusion Matrix shows the predictions vs the actual outcomes of first inning results."}
 # Calculate confusion matrix
