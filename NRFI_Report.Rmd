@@ -997,6 +997,25 @@ We then created a new indicator variable to indicate first innings that ended 0-
 
 To achieve more uncertainty, we then converted this same multilevel model into a Bayesian multilevel model with weakly informed priors. We chose weakly informed priors as there were major rule changes such as the pitch clock and larger bases which provided major impacts on run scoring.
 
+In addition, because we were not satisfied with the performance of our Bayesian model, we also implemented an XGBoost model to also predict whether there would be no runs in the first inning. We did this with the belief that by capturing nonlinear relationships and interactions between our features, we could produce more accurate predictions. 
+
+## Bayesian Multilevel Model Specification
+Level 1: \\
+$y_g = I + \beta_1 X_1 + \beta_2 X_2 + \beta_3 X_3 + \beta_4 X_4 + a_i + b_j + c_k + d_l + \epsilon_g$ \\
+Level 2: \\
+$a_i = \alpha_0 + u_i, u_i \sim N(0, \sigma_i^2)$ \\
+$b_j = \beta_0 + u_j, u_j \sim N(0, \sigma_j^2)$ \\
+$c_k = \phi_0 + u_k, u_k \sim N(0, \sigma_k^2)$ \\
+$d_l = \tau_0 + u_l, u_l \sim N(0, \sigma_l^2)$ \\
+Priors: \\
+Level 1 Intercept $\sim$ N(0, 6.25) \\
+Level 1 Coefficients $\sim$ N(0, 25), N(0, 216.3841), N(0, 3.1329), N(0, 464.4025) \\
+Covariance Matrix $\sim$ Decov(1, 1, 1, 1) for regularization, concentration, shape, and scale parameters respectively. \\
+I is the fixed intercept term for the level 1 equation, $X_1$ is a fixed effect for the home team's run rate, $X_2$ is a fixed effect for the away team's run rate, $X_3$ is the home team's fielding independent pitching rate (FIP), $X_4$ is the away team's FIP, $a_i$ is a random effect for the home team, $b_j$ is a random effect for the away team, $c_k$ is a random effect for the home team's pitcher, $d_l$ is a random effect for the away team's pitcher, and $\epsilon_g$ is a term that captures the level 1 prediction error. \\
+For the model where we assumed first inning runs were Poisson distributed and predicted the number of runs that would be scored in the first inning, the level 1 response variable $y_g$ is the total number of runs scored in that inning. To make predictions of whether runs were scored or not, we decided that if the predicted number of runs was 0.5 or higher, the prediction was that "Yes Runs First Inning", otherwise the prediction was "No Runs First Inning".  \\
+For the model where we assumed first inning runs were Binomial distributed and predicted whether or not runs would be scored in the first inning, $y_g$ is a binary indicator variable with values of 0 (indicating no runs were scored) and 1 (indicating that runs were scored). \\
+
+## XGBoost Model Specification
 
 # Results
 
