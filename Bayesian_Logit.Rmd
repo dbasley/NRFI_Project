@@ -12,8 +12,6 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 library(tidyverse)
-
-
 ```
 
 # Data and Data Cleaning
@@ -155,8 +153,29 @@ mlb_team_run_rate$run_rate_away <- as.numeric(mlb_team_run_rate$run_rate_away)
 half_inning_data <- half_inning_data %>%
   inner_join(mlb_team_run_rate, by = "team")
 
+# Compute FIP
+# Group data by pitcher and calculate FIP components
+pitcher_stats <- statcast_2023_first_inning %>%
+  group_by(player_name) %>%
+  summarize(
+    HR = sum(events == "home_run"),
+    BB = sum(events == "walk"),
+    HBP = sum(events == "hit_by_pitch"),
+    K = sum(events == "strikeout"),
+    IP = sum(outs_when_up) / 3
+  )
 
+# Define FIP constant
+FIP_constant <- 3.2
 
+# Calculate FIP for each pitcher
+pitcher_stats <- pitcher_stats %>%
+  mutate(FIP = pmax((13 * HR + 3 * (BB + HBP) - 2 * K) / IP + FIP_constant, 0))
+
+pitcher_stats <- pitcher_stats %>%
+  dplyr::select(c(player_name, FIP))
+
+half_inning_data <- half_inning_data %>% merge(pitcher_stats, by.x = "pitcher", by.y = "player_name", all.x = TRUE)
 
 inning_summary <- half_inning_data %>%
   group_by(game_pk) %>%
@@ -225,7 +244,7 @@ print(final_data)
 
 library(rstanarm)
 options(mc.cores = parallel::detectCores())
-team_runs_model <- stan_glmer(runs ~ is_home + run_rate_home + FIP + PA + run_rate_away + (1 | home_team) + (1 | away_team) + (1 | pitcher),
+team_runs_model <- stan_glmer(runs ~ is_home + run_rate_home + FIP + run_rate_away + (1 | home_team) + (1 | away_team) + (1 | pitcher),
                               family = poisson,
                               data = half_inning_data,
                               cores = 8,
@@ -249,28 +268,32 @@ nrfi_preds_poisson <- posterior_predict(team_runs_model, newdata = select(half_i
                                                        pitcher,
                                                        run_rate_away,
                                                        run_rate_home,
-                                                       FIP,
-                                                       PA)), seed = 30)
+                                                       FIP)), seed = 30)
 
+cat("Probability of NRFI", mean(sum(nrfi_preds_poisson == 0) / length(nrfi_preds_poisson) * 100), "%")
 
+nrfi_preds_poisson <- tibble(nrfi_preds_poisson)
 
-                                         
-par(mfrow=c(1,2))
-hist(nrfi_preds_home, main = "CLE Runs vs SEA", 
-     xlab = "# of Runs")
+nrfi_preds_poisson <- tibble(colMeans(nrfi_preds_poisson))
 
-hist(nrfi_preds_away, main = "SEA Runs vs CLE", 
-     xlab = "# of Runs")
+predicted_outcome <- if_else(nrfi_preds_poisson < 0.5, "NRFI", "YRFI")
 
+result_df <- half_inning_data %>%
+  select(game_pk, is_home, runs) %>%
+  mutate(outcome = if_else(runs == 0, "NRFI", "YRFI"))
 
+result_df$predicted_outcome <- predicted_outcome 
 
+result_df <- result_df[result_df$is_home == 1,]
+
+#accuracy
+cat("Accuracy", mean(result_df$outcome == result_df$predicted_outcome) * 100, "%")
 ```
 
 
 # Bayesian Logistic Regression
 
 ```{r}
-
 nrfi_model_logit <- stan_glmer(as.factor(zero_runs) ~  home_run_rate + away_run_rate +
                                  home_fip + away_fip + (1 | home_team) + (1 | away_team) + 
                                  (1 | home_pitcher) + (1 | away_pitcher),
@@ -280,40 +303,6 @@ nrfi_model_logit <- stan_glmer(as.factor(zero_runs) ~  home_run_rate + away_run_
                               iter = 2000 * 2,
                               seed = 2015,
                               chains = 4)
-
-posterior <- as.matrix(nrfi_model_logit)
-plot_title <- ggtitle("Posterior distributions",
-                      "with medians and 80% intervals")
-
-mcmc_areas(posterior,
-           #pars = c("cyl", "drat", "am", "wt"),
-           prob = 0.8) + plot_title
-
-library(bayesplot)
-
-baye
-
-library(lme4)
-
-nrfi_logit <- glmer(as.factor(zero_runs) ~  home_run_rate + away_run_rate +
-                                 home_fip + away_fip + (1 | home_team) + (1 | away_team) + 
-                                 (1 | home_pitcher) + (1 | away_pitcher),
-                              family = binomial,
-                              data = inning_summary)
-
-summary(x)
-
-pred_probs <- predict(x, newdata = inning_summary, type = "response")
-
-prediction <- ifelse(pred_probs > 0.5, "NRFI", "YRFI")
-
-
-inning_summary$pred_outcome <- prediction
-
-accuracy <- mean(prediction == inning_summary$zero_runs) * 100
-
-# Print accuracy
-cat("Prediction Accuracy:", accuracy, "%")
 
 
 nrfi_logit_preds <- posterior_predict(nrfi_model_logit,
@@ -341,7 +330,7 @@ cat("Probability of NRFI between SEA (home) and CLE (away)", sum(nrfi_logit_pred
 nrfi_logit_preds <- tibble(nrfi_logit_preds)
 
 nrfi_logit_preds <- tibble(colMeans(nrfi_logit_preds))
-
+colnames(nrfi_logit_preds) <- "predicted_prob"
 
 # Add predictions to inning_summary
 inning_summary_with_preds <- bind_cols(inning_summary, nrfi_logit_preds)
@@ -349,13 +338,12 @@ inning_summary_with_preds <- bind_cols(inning_summary, nrfi_logit_preds)
 # Assuming actual outcomes are stored in a column named actual_outcome
 # For example, if actual_outcome is binary (0 or 1), representing a win or loss for the home team, respectively
 # You can compare it with the predicted probabilities
-inning_summary_with_preds <- inning_summary_with_preds %>%
-  mutate(predicted_outcome = if_else(colMeans(nrfi_logit_preds) > 0.5, "NRFI", "YRFI"))
+inning_summary_with_preds$preds <- if_else(inning_summary_with_preds$predicted_prob < 0.5, 0, 1)
 
 
 # Now you can compare the predicted outcomes with the actual outcomes
 comparison <- inning_summary_with_preds %>%
-  select(game_pk, predicted_outcome, total_runs)
+  select(game_pk, preds, zero_runs)
 
 # Check the comparison
 print(comparison)
@@ -363,13 +351,10 @@ print(comparison)
 # Assuming you have comparison data frame as described in the previous response
 
 # Calculate accuracy
-accuracy <- mean(comparison$predicted_outcome == comparison$total_runs)
+accuracy <- mean(comparison$preds == comparison$zero_runs)
 
 # Print accuracy
 print(paste("Accuracy:", accuracy))
-
-
-
 
 ```
 
