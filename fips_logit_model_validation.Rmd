@@ -11,9 +11,9 @@ knitr::opts_chunk$set(echo = TRUE)
 # Data Cleaning for 2023
 
 ```{r}
+library(tidyverse)
 # Load Data
 statcast_2023_first_inning <- read_csv("statcast_2023_first_inning.csv")
-
 
 #
 statcast_2023_first_inning$on_1b[is.na(statcast_2023_first_inning$on_1b)] <- "woo"
@@ -202,7 +202,7 @@ pitch_types$total <- rowSums(pitch_types[, -c(1, 2)])
 #create proportions of pitch types thrown
 pitch_types_x <- pitch_types %>%
   mutate(across(starts_with("CH"):starts_with("SV"), ~ .x / total)) %>%
-  select(-total)
+  dplyr::select(-total)
 
 #join back to main dataset (half_inning_data)
 half_inning_data <- half_inning_data %>%
@@ -214,7 +214,7 @@ half_inning_data <- half_inning_data[, 1:27]
 #rule: if mean is greater than 0.01, keep pitch type, otherwise exclude it
 #exclude CS, FA, FO, KN, PO, SV
 half_inning_data <- half_inning_data %>%
-  select(-c(CS, FA, FO, KN, PO, SV))
+  dplyr::select(-c(CS, FA, FO, KN, PO, SV))
 
 
 #pitcher spin rate and release extension feature
@@ -324,6 +324,7 @@ inning_summary2023 <- inning_summary %>%
 ```{r}
 # Load Data
 statcast_2024_first_inning <- read_csv("statcast_2024_first_inning.csv")
+table(statcast_2024_first_inning$inning)
 
 
 #
@@ -511,7 +512,7 @@ pitch_types$total <- rowSums(pitch_types[, -c(1, 2)])
 #create proportions of pitch types thrown
 pitch_types_x <- pitch_types %>%
   mutate(across(starts_with("CH"):starts_with("SV"), ~ .x / total)) %>%
-  select(-total)
+  dplyr::select(-total)
 
 #join back to main dataset (half_inning_data)
 half_inning_data <- half_inning_data %>%
@@ -523,7 +524,7 @@ half_inning_data <- half_inning_data[, 1:24]
 #rule: if mean is greater than 0.01, keep pitch type, otherwise exclude it
 #exclude FO, KN, SV
 half_inning_data <- half_inning_data %>%
-  select(-c(FO, KN, SV))
+  dplyr::select(-c(FO, KN, SV))
 
 
 #pitcher spin rate and release extension feature
@@ -621,53 +622,15 @@ inning_summary <- half_inning_data %>%
   ) %>%
   ungroup()
 
-
-
-
 inning_summary2024 <- inning_summary %>%
   filter(home_pitcher != away_pitcher)
 ```
-# Validate using 2024 as holdout
 
-```{r}
-library(tidyverse)
-library(xgboost)
-train <- inning_summary2023
-test <- inning_summary2024
-
-
-nrfi_model_logit <- stan_glmer(as.factor(total_runs) ~  home_run_rate + away_run_rate +
-                                   home_fip + away_fip +
-                                   (1 | home_team) + (1 | away_team) + 
-                                   (1 | home_pitcher) + (1 | away_pitcher),
-                              family = binomial,
-                              data = inning_summary,
-                              cores = 8,
-                              iter = 2000 * 2,
-                              seed = 2015,
-                              chains = 4)
-
-
-nrfi_logit_preds_test <- posterior_predict(nrfi_model_logit,
-  newdata = test,
-  seed = 20
-)
-
-
-nrfi_pred <- as.vector(ifelse(colMeans(nrfi_logit_preds_test) > 0.5, 1, 0))
-
-
-actual_nrfi <- ifelse(test$total_runs == "NRFI", 1, 0)
-
-
-sum(nrfi_pred == actual_nrfi) / length(actual_nrfi)
-```
 
 ```{r}
 train <- na.omit(inning_summary2023)
-test <- na.omit(inning_summary2024)
-train
 
+test <- na.omit(inning_summary2024)
 
 # Assuming your data frame is named inning_summary
 # Convert zero_runs to binary (0/1)
@@ -791,3 +754,22 @@ pred_binary <- ifelse(pred > 0.50, 1, 0)
 
 mean(pred_binary == y_test)
 ```
+
+```{r}
+# Extract feature importance
+importance_matrix <- xgb.importance(feature_names = colnames(X_train), model = xgb_model)
+
+# Plot feature importance
+xgb.plot.importance(importance_matrix, top_n = 10,main = "10 Most Important Features for XGBoost \nModel trained on 2023 Data")
+```
+
+```{r}
+# Calculate confusion matrix
+conf_matrix <- confusionMatrix(as.factor(pred_binary), as.factor(y_test))
+
+# Plot confusion matrix
+fourfoldplot(conf_matrix$table, color = c("#CC6666", "#99CC99"), conf.level = 0, margin = 1, main = "XGBoost Confusion Matrix")
+```
+
+
+
