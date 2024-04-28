@@ -13,6 +13,10 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r, include=FALSE}
 library(tidyverse)
+library(kableExtra)
+library(caret)
+library(rstan)
+library(rstanarm)
 # Load Data
 statcast_2023_first_inning <- read_csv("statcast_2023_first_inning.csv")
 
@@ -325,7 +329,7 @@ inning_summary2023 <- inning_summary %>%
 
 ```
 
-```{r, include=FALSE, eval=FALSE}
+```{r, include=FALSE, eval=TRUE}
 # Load Data
 statcast_2024_first_inning <- read_csv("statcast_2024_first_inning.csv")
 
@@ -634,7 +638,7 @@ inning_summary2024 <- inning_summary %>%
 
 # Validate using 2024 as holdout
 
-```{r, include=FALSE, eval=FALSE}
+```{r, include=FALSE, eval=TRUE}
 library(xgboost)
 train <- inning_summary2023
 test <- inning_summary2024
@@ -667,10 +671,9 @@ actual_nrfi <- ifelse(test$total_runs == "NRFI", 1, 0)
 sum(nrfi_pred == actual_nrfi) / length(actual_nrfi)
 ```
 
-```{r, include=FALSE, eval=FALSE}
+```{r, include=FALSE, eval=TRUE}
 train <- na.omit(inning_summary2023)
 test <- na.omit(inning_summary2024)
-train
 
 
 # Assuming your data frame is named inning_summary
@@ -948,10 +951,27 @@ The initial multilevel model failed to hit our benchmark accuracy of 60% as it s
 
 The Bayesian multilevel model we implemented also achieved a non-profitable accuracy score of approximately 49.7%. The Bayesian model’s highest posterior probability was 49.7% and its lowest posterior probability was 8%, meaning this model is slightly worse than guessing NRFI or YRFI every game.
 
-After our unsatisfactory results from multilevel modeling, we took a different approach by implementing extreme gradient boosting (XGBoost). XGBoost trains series of decision trees where each subsequent tree is an improvement of the last. The process then optimizes both the loss function and the regularization term. Using this process is an improvement from our models as both interactions and feature importance will be much more sound than our previous experimentation approach. 
+After our unsatisfactory results from multilevel modeling, we took a different approach by implementing extreme gradient boosting (XGBoost). XGBoost trains a series of decision trees where each subsequent tree is an improvement of the last. The process then optimizes both the loss function and the regularization term. Using this process is an improvement from our models as both interactions and feature importance will be much more sound than our previous experimentation approach. 
 
 When training the model, we used 24 features for both home team and away teams to predict a NRFI occurring. We then used an iterative process to find the ideal tuning parameters to return a model that consistently produced the highest accuracy. The XGBoost model that we implemented was far superior in performance compared to our other modeling attempts, achieving 90% accuracy on the 2023 data it was trained on and 71.5% accuracy on 2024 games when used as holdout data. This accuracy falls well above our aim of approximately 60% accuracy to be profitable.
 
+```{r, echo=FALSE}
+# Calculate confusion matrix
+conf_matrix <- confusionMatrix(as.factor(pred_binary), as.factor(y_test))
+
+# Plot confusion matrix
+fourfoldplot(conf_matrix$table, color = c("#CC6666", "#99CC99"), conf.level = 0, margin = 1, main = "XGBoost Confusion Matrix")
+```
+
+When looking at a confusion matrix for the 2024 NRFI predictions in Figure NUMBER, we can see that false negatives and positives are being predicted somewhat evenly. The XGBoost model is also predicting more NRFIs than YRFIs. When examining the ten most important features for the model (Figure NUMBER), we see that fielder independent pitching for both home team and away team (denoted as home_fip and away_fip) are the most significant contributors. Subsequently, different pitch types for both home and away teams impact decisions at varying levels. In Figure NUMBER, these different pitch types are denoted as away_ff, home_cu, away_cg, etc. Ultimately, XGBoost is telling us that the pitcher and the type of pitches they throw are what matters most. Such feature importance holds true through k-fold cross validation on the 2023 season.
+
+```{r}
+# Extract feature importance
+importance_matrix <- xgb.importance(feature_names = colnames(X_train), model = xgb_model)
+
+# Plot feature importance
+xgb.plot.importance(importance_matrix, top_n = 10,main = "10 Most Important Features for XGBoost \nModel trained on 2023 Data")
+```
 
 # Discussion
 
