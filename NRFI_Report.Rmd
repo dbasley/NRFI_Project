@@ -1,0 +1,418 @@
+---
+title: "The Greatest Bet in Baseball"
+subtitle: "Six Simple Outs"
+author: "Devin Basley, Zachary Strennen, Vinay Maruri, Daven Lagu"
+date: "2024-04-28"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, include=FALSE}
+library(tidyverse)
+# Load Data
+statcast_2023_first_inning <- read_csv("statcast_2023_first_inning.csv")
+
+
+#
+statcast_2023_first_inning$on_1b[is.na(statcast_2023_first_inning$on_1b)] <- "woo"
+statcast_2023_first_inning$on_2b[is.na(statcast_2023_first_inning$on_2b)] <- "woo"
+statcast_2023_first_inning$on_3b[is.na(statcast_2023_first_inning$on_3b)] <- "woo"
+
+# statcast_2023_first_inning <- statcast_2023_first_inning[rev(1:nrow(statcast_2023_first_inning)), ]
+
+# Vector of Events that only include action events
+# Balls and Strikes that DO NOT result in walks or strikeouts excluded
+included_events <- c(
+  "double", "field_out", "force_out",
+  "home_run", "sac_fly", "strikeout", "walk",
+  "double_play", "fielders_choice",
+  "sac_fly_double_play",
+  "strikeout_double_play", "field_error",
+  "fielders_choice_out", "hit_by_pitch", "sac_bunt", "single",
+  "triple"
+)
+
+
+# Filter statcast data for only action events
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  filter(events %in% included_events) %>%
+  mutate(runs_before = away_score + home_score)
+
+
+# # Summarize half inning totals
+half_innings <- statcast_2023_first_inning %>%
+  group_by(inning_topbot) %>%
+  summarize(
+    outs_inning = sum(outs_when_up),
+    runs_inning = sum(post_bat_score),
+    runs_start = first(runs_before),
+    max_runs = runs_inning + runs_start
+  )
+
+
+
+
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  inner_join(half_innings, by = "inning_topbot") %>%
+  mutate(runs_roi = max_runs - runs_before)
+
+
+# Start Game State compuation
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  mutate(bases = paste0(
+    if_else(on_1b == "woo", 0, 1),
+    if_else(on_2b == "woo", 0, 1),
+    if_else(on_3b == "woo", 0, 1)
+  ))
+
+
+# Compute Pre and Post AB State
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  mutate(
+    state = paste(bases, outs_when_up),
+    new_state = case_when(
+      inning_topbot != lag(inning_topbot) ~ NA_character_,
+      TRUE ~ lag(state)
+    )
+  )
+
+
+
+# Reverse Data
+statcast_2023_first_inning <- statcast_2023_first_inning[rev(1:nrow(statcast_2023_first_inning)), ]
+
+
+statcast_2023_first_inning$new_state[is.na(statcast_2023_first_inning$new_state)] <- "woo"
+
+statcast_2023_first_inning <- statcast_2023_first_inning %>%
+  mutate(new_state = str_replace(new_state, "woo", "3"))
+
+
+# End of First Inning Summary
+end_inning_data <- statcast_2023_first_inning %>%
+  dplyr::select(c(game_date, game_pk, player_name, player_name, batter, post_home_score, post_away_score, inning_topbot, away_team, home_team)) %>%
+  group_by(game_pk) %>%
+  mutate(
+    away_runs = max(post_away_score),
+    home_runs = max(post_home_score),
+    total_runs = away_runs + home_runs,
+    home = home_team,
+    away = away_team
+  ) %>%
+  ungroup()
+
+# Group data by pitcher and calculate FIP components
+pitcher_stats <- statcast_2023_first_inning %>%
+  group_by(player_name) %>%
+  summarize(
+    HR = sum(events == "home_run"),
+    BB = sum(events == "walk"),
+    HBP = sum(events == "hit_by_pitch"),
+    K = sum(events == "strikeout"),
+    IP = sum(outs_when_up) / 3
+  )
+
+# Define FIP constant
+FIP_constant <- 3.2
+
+# Calculate FIP for each pitcher
+pitcher_stats <- pitcher_stats %>%
+  mutate(FIP = pmax((13 * HR + 3 * (BB + HBP) - 2 * K) / IP + FIP_constant, 0))
+
+pitcher_stats <- pitcher_stats %>%
+  dplyr::select(c(player_name, FIP))
+
+# Home team indicator variable
+end_inning_data <- end_inning_data %>%
+  mutate(is_home = ifelse(inning_topbot == "Bot", 1, 0))
+
+end_inning_data <- end_inning_data %>%
+  mutate(
+    team = if_else(is_home == 1, home, away),
+    runs = if_else(is_home == 1, home_runs, away_runs)
+  )
+
+
+# Selecting required columns
+new_dataset <- end_inning_data %>%
+  dplyr::select(game_pk, team, runs, is_home, player_name)
+
+half_inning_summary <- end_inning_data %>%
+  group_by(game_pk, is_home) %>%
+  summarize(
+    team = first(team),
+    runs = if_else(first(is_home) == 1, max(home_runs), max(away_runs)),
+    pitcher = first(player_name),
+    PA = n_distinct(batter),
+    date = first(game_date)
+  ) %>%
+  ungroup()
+
+team_info <- end_inning_data %>%
+  group_by(game_pk) %>%
+  summarise(
+    home_team = first(home),
+    away_team = first(away)
+  ) %>%
+  ungroup()
+
+
+
+# Merge team information with half_inning_data
+half_inning_data <- half_inning_summary %>%
+  left_join(team_info, by = "game_pk")
+
+mlb_team_run_rate <- half_inning_summary %>%
+  group_by(team) %>%
+  summarise(
+    run_rate_away = mean(if_else(is_home == 0, runs, NA), na.rm = TRUE),
+    run_rate_home = mean(if_else(is_home == 1, runs, NA), na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+
+# Home run rate as numeric variable
+mlb_team_run_rate$run_rate_home <- as.numeric(mlb_team_run_rate$run_rate_home)
+# Away run rate as numeric variable
+mlb_team_run_rate$run_rate_away <- as.numeric(mlb_team_run_rate$run_rate_away)
+
+
+half_inning_data <- half_inning_data %>%
+  inner_join(mlb_team_run_rate, by = "team")
+
+# Join pitcher_stats with half_inning_data by player_name
+half_inning_data <- left_join(half_inning_data, pitcher_stats, by = c("pitcher" = "player_name"))
+
+
+
+#pitch types feature
+
+raw <- read_csv("statcast_2023_first_inning.csv")
+
+pitch_types <- raw %>%
+  group_by(game_date, player_name, pitch_type) %>%
+  summarize(pitch_count = n()) %>%
+  ungroup() %>%
+  spread(pitch_type, pitch_count, fill = 0)
+
+pitch_types$total <- rowSums(pitch_types[, -c(1, 2)])
+
+#create proportions of pitch types thrown
+pitch_types_x <- pitch_types %>%
+  mutate(across(starts_with("CH"):starts_with("SV"), ~ .x / total)) %>%
+  select(-total)
+
+#join back to main dataset (half_inning_data)
+half_inning_data <- half_inning_data %>%
+  left_join(pitch_types_x, by = c("pitcher" = "player_name", "date" = "game_date"))
+
+#get rid of NA column
+half_inning_data <- half_inning_data[, 1:27]
+
+#rule: if mean is greater than 0.01, keep pitch type, otherwise exclude it
+#exclude CS, FA, FO, KN, PO, SV
+half_inning_data <- half_inning_data %>%
+  select(-c(CS, FA, FO, KN, PO, SV))
+
+
+#pitcher spin rate and release extension feature
+spins <- raw %>% 
+  group_by(player_name) %>% 
+  summarize(spin_rate = mean(release_spin_rate, na.rm = TRUE)) %>% 
+  ungroup()
+#join back to main dataset (half_inning_data)
+half_inning_data <- half_inning_data %>% 
+  left_join(spins, by = c("pitcher" = "player_name"))
+
+
+#park factors
+library(baseballr)
+
+park <- fg_park("2023")
+#add a new column with the 3 letter abbreviation of the baseball team
+park$team <- park$home_team
+park$team <- replace(park$team, park$team == "Diamondbacks", "ARI")
+park$team <- replace(park$team, park$team == "Braves", "ATL")
+park$team <- replace(park$team, park$team == "Orioles", "BAL")
+park$team <- replace(park$team, park$team == "Red Sox", "BOS")
+park$team <- replace(park$team, park$team == "White Sox", "CWS")
+park$team <- replace(park$team, park$team == "Cubs", "CHC")
+park$team <- replace(park$team, park$team == "Reds", "CIN")
+park$team <- replace(park$team, park$team == "Indians", "CLE")
+park$team <- replace(park$team, park$team == "Rockies", "COL")
+park$team <- replace(park$team, park$team == "Tigers", "DET")
+park$team <- replace(park$team, park$team == "Astros", "HOU")
+park$team <- replace(park$team, park$team == "Royals", "KC")
+park$team <- replace(park$team, park$team == "Angels", "LAA")
+park$team <- replace(park$team, park$team == "Dodgers", "LAD")
+park$team <- replace(park$team, park$team == "Marlins", "MIA")
+park$team <- replace(park$team, park$team == "Brewers", "MIL")
+park$team <- replace(park$team, park$team == "Twins", "MIN")
+park$team <- replace(park$team, park$team == "Mets", "NYM")
+park$team <- replace(park$team, park$team == "Yankees", "NYY")
+park$team <- replace(park$team, park$team == "Athletics", "OAK")
+park$team <- replace(park$team, park$team == "Phillies", "PHI")
+park$team <- replace(park$team, park$team == "Pirates", "PIT")
+park$team <- replace(park$team, park$team == "Padres", "SD")
+park$team <- replace(park$team, park$team == "Giants", "SF")
+park$team <- replace(park$team, park$team == "Mariners", "SEA")
+park$team <- replace(park$team, park$team == "Cardinals", "STL")
+park$team <- replace(park$team, park$team == "Rays", "TB")
+park$team <- replace(park$team, park$team == "Rangers", "TEX")
+park$team <- replace(park$team, park$team == "Blue Jays", "TOR")
+park$team <- replace(park$team, park$team == "Nationals", "WSH")
+
+#join back to main dataset (half_inning_data)
+park <- park[, c(4, 5, 17)]
+half_inning_data <- half_inning_data %>% 
+  left_join(park, by = c("home_team" = "team"))
+
+#half_inning_data <- half_inning_data[, c(1:22, 25, 26)]
+colnames(half_inning_data)[23] <- "park_factor_3yr"
+colnames(half_inning_data)[24] <- "park_factor_1yr"
+
+inning_summary <- half_inning_data %>%
+  group_by(game_pk) %>%
+  summarize(
+    home_team = first(home_team),
+    away_team = first(away_team),
+    home_runs = sum(if_else(is_home == 1, runs, 0)),
+    away_runs = sum(if_else(is_home == 0, runs, 0)),
+    zero_runs = if_else(home_runs + away_runs == 0, 0, 1),
+    home_run_rate = first(run_rate_home),
+    away_run_rate = first(run_rate_away),
+    home_pitcher = first(pitcher),
+    away_pitcher = pitcher,
+    home_fip = first(FIP),
+    away_fip = FIP,
+    date = first(date),
+    park_factor_1 = first(park_factor_1yr),
+    park_factor_3 = first(park_factor_3yr),
+    home_spin_rate = first(spin_rate),
+    away_spin_rate = spin_rate,
+    home_ch = first(CH),
+    away_ch = CH,
+    home_cu = first(CU),
+    away_cu = CU,
+    home_fc = first(FC),
+    away_fc = FC,
+    home_ff = first(FF),
+    away_ff = FF,
+    home_fs = first(FS),
+    away_fs = FS,
+    home_kc = first(KC),
+    away_kc = KC,
+    home_si = first(SI),
+    away_si = SI,
+    home_sl = first(SL),
+    away_sl = SL,
+    home_st = first(ST),
+    away_st = ST
+  ) %>%
+  ungroup()
+
+
+
+inning_summary2023 <- inning_summary %>%
+  filter(home_pitcher != away_pitcher)
+
+
+
+
+```
+
+
+
+
+# Introduction
+
+Sports betting is a practice that is both wildly popular and potentially very lucrative for sports fans, but most bettors lose more than they win. Part of the reason for these losses is that bettors place wagers impulsively, making uninformed decisions based on biased beliefs or incomplete knowledge of what bets will hit.
+
+Baseball is an interesting sport from a betting perspective because each inning is essentially a mini game within the full 9 inning game, allowing bettors to place a variety of different bets on each inning, where each wager can have completely different odds or outcomes. One such bet is the NRFI (No Run First Inning) vs YRFI (Yes Run First Inning) bet that wagers either there will be no runs scored by either team in the first inning (NRFI), or at least one run will be scored by either team in the first inning (YRFI).
+
+For this analysis, we will generate our own set of probabilities that a NRFI will happen in a given game. In order for our model to be profitable, we have to aim for at least 60% accuracy to obtain a consistent profit and to account for the different odds these wagers can be set at, generally ranging from -110 to -160. The goal of this analysis is to provide more informed decision making when placing these bets to improve the profitability when gambling. 
+
+
+# Data
+
+We pulled MLB Statcast from the 2023 and beginning of the 2024 season using the pybaseball library in python. We then filtered the data to contain only pitches and at-bats from the first inning into a new inning summary data frame for modeling purposes. After filtering, we were left with 83,064 rows of data for the 2023 season and 9,952 rows of data for the ongoing 2024 season. We created pitcher and team features from the first inning Statcast data for model building purposes.
+
+
+## EDA
+
+After filtering to end of at-bats events, we could see the overall distribution of run scoring for home teams and away teams. As we can see in Figure 1, run scoring appears to have a Poisson distribution.
+
+
+```{r, figures-side, fig.show="hold", out.width="50%", echo=FALSE, message=FALSE, fig.cap="The distributions for away and home run scoring appears to be Poisson."}
+
+statcast_2023_first_inning %>%
+  ggplot(aes(x = post_away_score)) +
+  geom_histogram() +
+  labs(x = "Runs Scored After Away At-Bats",
+       y = "Count",
+       title = "Away Runs Scored After At-Bats in 2023 MLB Season") +
+   scale_x_continuous(breaks = seq(min(statcast_2023_first_inning$post_away_score),
+                                   max(statcast_2023_first_inning$post_away_score), 
+                                   by = 1)) +
+  theme_bw()
+
+
+statcast_2023_first_inning %>%
+  ggplot(aes(x = post_home_score)) +
+  geom_histogram() +
+  labs(x = "Runs Scored After Home At-Bats",
+       y = "Count",
+       title = "Home Runs Scored After At-Bats in 2023 MLB Season") +
+   scale_x_continuous(breaks = seq(min(statcast_2023_first_inning$post_home_score),
+                                   max(statcast_2023_first_inning$post_home_score), 
+                                   by = 1)) +
+  theme_bw()
+
+
+```
+
+
+We then computed each team’s home and away run scoring rate and computed 80% credible intervals for these rates. As we can see in Figure 2, most teams run scoring rates overlap, however the Atlanta Braves have significantly higher run scoring at home than the other teams.
+
+
+# Methods
+
+## Modeling Approach
+
+We treated the first inning as its own game. It is unique to later innings as pitcher performance from an entire appearance may not be fully representative of their performance in the first inning. To account for a minimum 3 plate appearances in the inning, we computed each team’s home and away run scoring rate. This feature is appropriate as many teams typically have the same starting lineup throughout the season, therefore we are assessing the first 3 hitters simultaneously. 
+
+Initially, we ran simulations using our home and away runs scoring rates. This model was naive as it does not take into account which pitcher is pitching for each team.
+
+We then created a new indicator variable to indicate first innings that ended 0-0 or not. From  there we used a multilevel logistic regression with random effects for the home and away teams, the home and away pitchers, home and away pitcher FIPs (Fielding Independent Performance), while still including the home and away run rates. This model was assessed using its accuracy score. 
+
+To achieve more uncertainty, we then converted this same multilevel model into a Bayesian multilevel model with weakly informed priors. We chose weakly informed priors as there were major rule changes such as the pitch clock and larger bases which provided major impacts on run scoring.
+
+
+# Results
+
+The accuracy of these models is assessed by accuracy scores, however we kept in mind that successful betting algorithms must be approximately 60% or better to be profitable as many of these NRFI bets have favorable odds for occuring. 
+
+The initial multilevel model failed to hit our benchmark accuracy of 60% as it scored approximately 42% accuracy. With its poor performance, bettor’s would be better suited guessing NRFI or YRFI for every game.
+
+
+The Bayesian multilevel model we implemented also achieved a non-profitable accuracy score of approximately 49.7%. The Bayesian model’s highest posterior probability was 49.7% and its lowest posterior probability was 8%, meaning this model is slightly worse than guessing NRFI or YRFI every game.
+
+After our unsatisfactory results from multilevel modeling, we took a different approach by implementing extreme gradient boosting (XGBoost). XGBoost trains series of decision trees where each subsequent tree is an improvement of the last. The process then optimizes both the loss function and the regularization term. Using this process is an improvement from our models as both interactions and feature importance will be much more sound than our previous experimentation approach. 
+
+When training the model, we used 24 features for both home team and away teams to predict a NRFI occurring. We then used an iterative process to find the ideal tuning parameters to return a model that consistently produced the highest accuracy. The XGBoost model that we implemented was far superior in performance compared to our other modeling attempts, achieving 90% accuracy on the 2023 data it was trained on and 71.5% accuracy on 2024 games when used as holdout data. This accuracy falls well above our aim of approximately 60% accuracy to be profitable.
+
+
+# Discussion
+
+Overall, our findings show the Bayesian model we applied to predict the occurrence of an NRFI does not generate accurate or confident enough predictions to be used to actually profit from bets. While it might be possible to improve this model through accounting for more features, including interactions, or a developing a more strongly-informed prior distribution, the current model does no better than weakly suggesting a random guess when it comes to deciding which games will have an NRFI. 
+
+A significant challenge present during this project was locating reference material that could be used to improve our model, as this topic will generally only be researched in a sports betting context where bettors will most likely not be inclined to share their betting model, as doing so would potentially reduce the odds and payout of the wager. Additionally, the dynamic nature of baseball means a high probability of an NRFI is not always indicative of the reality, so even when the prediction of an NRFI for a game has a fairly large probability it is possible that a run may still be scored, making the confidence of the prediction very important when deciding whether or not to place the bet. 
+
+
+Taken together, we conclude that future iterations of this project should include more features and a better informed prior distribution in the Bayesian model to increase the model accuracy, as well as develop a method to increase the probability value confidence to decide when to place the bet. Until the prediction accuracy and confidence meets our previously specified threshold, we should only consider using our XGBoost model to make betting predictions.
+
+
