@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
-```{r, include=FALSE}
+```{r, include=FALSE, message=FALSE}
 library(tidyverse)
 library(kableExtra)
 library(caret)
@@ -329,7 +329,7 @@ inning_summary2023 <- inning_summary %>%
 
 ```
 
-```{r, include=FALSE, eval=TRUE}
+```{r, include=FALSE, eval=TRUE, message=FALSE}
 # Load Data
 statcast_2024_first_inning <- read_csv("statcast_2024_first_inning.csv")
 
@@ -636,15 +636,15 @@ inning_summary2024 <- inning_summary %>%
   filter(home_pitcher != away_pitcher)
 ```
 
-# Validate using 2024 as holdout
 
-```{r, include=FALSE, eval=TRUE}
+
+```{r, include=FALSE, eval=TRUE, results='hide', message=FALSE}
 library(xgboost)
 train <- inning_summary2023
 test <- inning_summary2024
 
 
-nrfi_model_logit <- stan_glmer(as.factor(total_runs) ~  home_run_rate + away_run_rate +
+nrfi_model_logit <- stan_glmer(as.factor(zero_runs) ~  home_run_rate + away_run_rate +
                                    home_fip + away_fip +
                                    (1 | home_team) + (1 | away_team) + 
                                    (1 | home_pitcher) + (1 | away_pitcher),
@@ -671,7 +671,7 @@ actual_nrfi <- ifelse(test$total_runs == "NRFI", 1, 0)
 sum(nrfi_pred == actual_nrfi) / length(actual_nrfi)
 ```
 
-```{r, include=FALSE, eval=TRUE}
+```{r, include=FALSE, eval=TRUE, results='hide', message=FALSE}
 train <- na.omit(inning_summary2023)
 test <- na.omit(inning_summary2024)
 
@@ -800,7 +800,7 @@ mean(pred_binary == y_test)
 ```
 
 
-```{r, include=FALSE}
+```{r, echo=FALSE, eval=TRUE, results='hide', message=FALSE}
 # Non-Bayesian Multilevel Model
 
 library(lme4)
@@ -823,18 +823,18 @@ inning_summary$pred_outcome <- prediction
 accuracy <- mean(prediction == inning_summary$zero_runs) * 100
 
 # Print accuracy
-cat("Prediction Accuracy:", accuracy, "%")
+#cat("Prediction Accuracy:", accuracy, "%")
 
 
 
 ```
 
 
-```{r, include=FALSE, eval=FALSE}
-library(rstanarm)
+```{r, echo=FALSE, eval=TRUE, results='hide', message=FALSE}
 
-# Bayesian Multilevel Model
 
+# Bayesian Multilevel Model - Logistic
+options(mc.cores = parallel::detectCores())
 nrfi_model_logit <- stan_glmer(as.factor(zero_runs) ~  home_run_rate + away_run_rate +
                                  home_fip + away_fip + (1 | home_team) + (1 | away_team) + 
                                  (1 | home_pitcher) + (1 | away_pitcher),
@@ -857,26 +857,82 @@ nrfi_logit_preds <- posterior_predict(nrfi_model_logit,
                                                        away_fip)),
                                       seed = 30
                                       )
+#cat("Probability of NRFI", mean(sum(nrfi_logit_preds == 0) / length(nrfi_logit_preds) * 100), "%", "\n")
+
 
 nrfi_logit_preds <- tibble(nrfi_logit_preds)
 
 nrfi_logit_preds <- tibble(colMeans(nrfi_logit_preds))
-
+colnames(nrfi_logit_preds) <- "predicted_prob"
 
 # Add predictions to inning_summary
 inning_summary_with_preds <- bind_cols(inning_summary, nrfi_logit_preds)
 
+
+inning_summary_with_preds$preds <- if_else(inning_summary_with_preds$predicted_prob < 0.5, 0, 1)
+
+
+# Now you can compare the predicted outcomes with the actual outcomes
 comparison <- inning_summary_with_preds %>%
-  select(game_pk, predicted_outcome, total_runs)
+  select(game_pk, preds, zero_runs)
+
+# Check the comparison
+#print(comparison)
+
 
 # Calculate accuracy
-accuracy <- mean(comparison$predicted_outcome == comparison$total_runs)
+accuracy <- mean(comparison$preds == comparison$zero_runs)
 
 # Print accuracy
-cat("Accuracy:", accuracy)
+#cat("Accuracy:", accuracy)
+
+```
+
+
+```{r, echo=FALSE, eval=TRUE, results='hide', message=FALSE}
+
+# Bayesian Multilevel Model - Poisson
+
+
+options(mc.cores = parallel::detectCores())
+team_runs_model <- stan_glmer(runs ~ is_home + run_rate_home + FIP + run_rate_away + (1 | home_team) + (1 | away_team) + (1 | pitcher),
+                              family = poisson,
+                              data = half_inning_data,
+                              cores = 8,
+                              iter = 2000 * 2,
+                              seed = 2015,
+                              chains = 4)
+nrfi_preds_poisson <- posterior_predict(team_runs_model, newdata = select(half_inning_data, c(is_home,
+                                                       away_team,
+                                                       home_team,
+                                                       pitcher,
+                                                       run_rate_away,
+                                                       run_rate_home,
+                                                       FIP)), seed = 30)
+
+#cat("Probability of NRFI", mean(sum(nrfi_preds_poisson == 0) / length(nrfi_preds_poisson) * 100), "%", "\n")
+
+nrfi_preds_poisson <- tibble(nrfi_preds_poisson)
+
+nrfi_preds_poisson <- tibble(colMeans(nrfi_preds_poisson))
+
+predicted_outcome <- if_else(nrfi_preds_poisson < 0.5, "NRFI", "YRFI")
+
+result_df <- half_inning_data %>%
+  select(game_pk, is_home, runs) %>%
+  mutate(outcome = if_else(runs == 0, "NRFI", "YRFI"))
+
+result_df$predicted_outcome <- predicted_outcome 
+
+result_df <- result_df[result_df$is_home == 1,]
+
+#accuracy
+#cat("Accuracy", mean(result_df$outcome == result_df$predicted_outcome) * 100, "%")
 
 
 ```
+
+
 
 # Introduction
 
@@ -955,7 +1011,7 @@ After our unsatisfactory results from multilevel modeling, we took a different a
 
 When training the model, we used 24 features for both home team and away teams to predict a NRFI occurring. We then used an iterative process to find the ideal tuning parameters to return a model that consistently produced the highest accuracy. The XGBoost model that we implemented was far superior in performance compared to our other modeling attempts, achieving 90% accuracy on the 2023 data it was trained on and 71.5% accuracy on 2024 games when used as holdout data. This accuracy falls well above our aim of approximately 60% accuracy to be profitable.
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, fig.cap="Confusion Matrix shows the predictions vs the actual outcomes of first inning results."}
 # Calculate confusion matrix
 conf_matrix <- confusionMatrix(as.factor(pred_binary), as.factor(y_test))
 
@@ -965,7 +1021,7 @@ fourfoldplot(conf_matrix$table, color = c("#CC6666", "#99CC99"), conf.level = 0,
 
 When looking at a confusion matrix for the 2024 NRFI predictions in Figure NUMBER, we can see that false negatives and positives are being predicted somewhat evenly. The XGBoost model is also predicting more NRFIs than YRFIs. When examining the ten most important features for the model (Figure NUMBER), we see that fielder independent pitching for both home team and away team (denoted as home_fip and away_fip) are the most significant contributors. Subsequently, different pitch types for both home and away teams impact decisions at varying levels. In Figure NUMBER, these different pitch types are denoted as away_ff, home_cu, away_cg, etc. Ultimately, XGBoost is telling us that the pitcher and the type of pitches they throw are what matters most. Such feature importance holds true through k-fold cross validation on the 2023 season.
 
-```{r}
+```{r, echo=FALSE, fig.cap="Away pitcher and home pitcher fip are consistently the most important variables when determining the probability of a NRFI."}
 # Extract feature importance
 importance_matrix <- xgb.importance(feature_names = colnames(X_train), model = xgb_model)
 

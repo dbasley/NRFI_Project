@@ -270,7 +270,7 @@ nrfi_preds_poisson <- posterior_predict(team_runs_model, newdata = select(half_i
                                                        run_rate_home,
                                                        FIP)), seed = 30)
 
-cat("Probability of NRFI", mean(sum(nrfi_preds_poisson == 0) / length(nrfi_preds_poisson) * 100), "%")
+cat("Probability of NRFI", mean(sum(nrfi_preds_poisson == 0) / length(nrfi_preds_poisson) * 100), "%", "\n")
 
 nrfi_preds_poisson <- tibble(nrfi_preds_poisson)
 
@@ -317,14 +317,14 @@ nrfi_logit_preds <- posterior_predict(nrfi_model_logit,
                                       seed = 30
                                       )
 
-nrfi_logit_preds_test <- posterior_predict(nrfi_model_logit,
-                                      newdata = tibble(home_team = "SEA",
-                                                       away_team = "CLE"),
-                                      seed = 20)
+# nrfi_logit_preds_test <- posterior_predict(nrfi_model_logit,
+#                                       newdata = tibble(home_team = "SEA",
+#                                                        away_team = "CLE"),
+#                                       seed = 20)
 
-cat("Probability of NRFI", mean(sum(nrfi_logit_preds == 0) / length(nrfi_logit_preds) * 100), "%")
+cat("Probability of NRFI", mean(sum(nrfi_logit_preds == 0) / length(nrfi_logit_preds) * 100), "%", "\n")
 
-cat("Probability of NRFI between SEA (home) and CLE (away)", sum(nrfi_logit_preds_test == 0) / length(nrfi_logit_preds_test) * 100, "%")
+#cat("Probability of NRFI between SEA (home) and CLE (away)", sum(nrfi_logit_preds_test == 0) / length(nrfi_logit_preds_test) * 100, "%")
 
 
 nrfi_logit_preds <- tibble(nrfi_logit_preds)
@@ -335,26 +335,23 @@ colnames(nrfi_logit_preds) <- "predicted_prob"
 # Add predictions to inning_summary
 inning_summary_with_preds <- bind_cols(inning_summary, nrfi_logit_preds)
 
-# Assuming actual outcomes are stored in a column named actual_outcome
-# For example, if actual_outcome is binary (0 or 1), representing a win or loss for the home team, respectively
-# You can compare it with the predicted probabilities
+
 inning_summary_with_preds$preds <- if_else(inning_summary_with_preds$predicted_prob < 0.5, 0, 1)
 
 
-# Now you can compare the predicted outcomes with the actual outcomes
+
 comparison <- inning_summary_with_preds %>%
   select(game_pk, preds, zero_runs)
 
 # Check the comparison
 print(comparison)
 
-# Assuming you have comparison data frame as described in the previous response
 
 # Calculate accuracy
 accuracy <- mean(comparison$preds == comparison$zero_runs)
 
 # Print accuracy
-print(paste("Accuracy:", accuracy))
+cat("Accuracy:", accuracy)
 
 ```
 
@@ -572,7 +569,7 @@ print(runs_against_data)
 # Load necessary libraries
 library(xgboost)
 
-# Assuming your data frame is named inning_summary
+
 # Convert zero_runs to binary (0/1)
 inning_summary$zero_runs <- as.integer(inning_summary$zero_runs == "1")
 
