@@ -187,7 +187,7 @@ half_inning_data <- left_join(half_inning_data, pitcher_stats, by = c("pitcher" 
 
 
 
-#pitch types feature
+# pitch types feature
 
 raw <- read_csv("statcast_2023_first_inning.csv")
 
@@ -199,39 +199,39 @@ pitch_types <- raw %>%
 
 pitch_types$total <- rowSums(pitch_types[, -c(1, 2)])
 
-#create proportions of pitch types thrown
+# create proportions of pitch types thrown
 pitch_types_x <- pitch_types %>%
   mutate(across(starts_with("CH"):starts_with("SV"), ~ .x / total)) %>%
   dplyr::select(-total)
 
-#join back to main dataset (half_inning_data)
+# join back to main dataset (half_inning_data)
 half_inning_data <- half_inning_data %>%
   left_join(pitch_types_x, by = c("pitcher" = "player_name", "date" = "game_date"))
 
-#get rid of NA column
+# get rid of NA column
 half_inning_data <- half_inning_data[, 1:27]
 
-#rule: if mean is greater than 0.01, keep pitch type, otherwise exclude it
-#exclude CS, FA, FO, KN, PO, SV
+# rule: if mean is greater than 0.01, keep pitch type, otherwise exclude it
+# exclude CS, FA, FO, KN, PO, SV
 half_inning_data <- half_inning_data %>%
   dplyr::select(-c(CS, FA, FO, KN, PO, SV))
 
 
-#pitcher spin rate and release extension feature
-spins <- raw %>% 
-  group_by(player_name) %>% 
-  summarize(spin_rate = mean(release_spin_rate, na.rm = TRUE)) %>% 
+# pitcher spin rate and release extension feature
+spins <- raw %>%
+  group_by(player_name) %>%
+  summarize(spin_rate = mean(release_spin_rate, na.rm = TRUE)) %>%
   ungroup()
-#join back to main dataset (half_inning_data)
-half_inning_data <- half_inning_data %>% 
+# join back to main dataset (half_inning_data)
+half_inning_data <- half_inning_data %>%
   left_join(spins, by = c("pitcher" = "player_name"))
 
 
-#park factors
+# park factors
 library(baseballr)
 
 park <- fg_park("2023")
-#add a new column with the 3 letter abbreviation of the baseball team
+# add a new column with the 3 letter abbreviation of the baseball team
 park$team <- park$home_team
 park$team <- replace(park$team, park$team == "Diamondbacks", "ARI")
 park$team <- replace(park$team, park$team == "Braves", "ATL")
@@ -264,12 +264,12 @@ park$team <- replace(park$team, park$team == "Rangers", "TEX")
 park$team <- replace(park$team, park$team == "Blue Jays", "TOR")
 park$team <- replace(park$team, park$team == "Nationals", "WSH")
 
-#join back to main dataset (half_inning_data)
+# join back to main dataset (half_inning_data)
 park <- park[, c(4, 5, 17)]
-half_inning_data <- half_inning_data %>% 
+half_inning_data <- half_inning_data %>%
   left_join(park, by = c("home_team" = "team"))
 
-#half_inning_data <- half_inning_data[, c(1:22, 25, 26)]
+# half_inning_data <- half_inning_data[, c(1:22, 25, 26)]
 colnames(half_inning_data)[23] <- "park_factor_3yr"
 colnames(half_inning_data)[24] <- "park_factor_1yr"
 
@@ -497,7 +497,7 @@ half_inning_data <- half_inning_data %>%
 # Join pitcher_stats with half_inning_data by player_name
 half_inning_data <- left_join(half_inning_data, pitcher_stats, by = c("pitcher" = "player_name"))
 
-#pitch types feature
+# pitch types feature
 
 raw <- read_csv("statcast_2024_first_inning.csv")
 
@@ -509,39 +509,39 @@ pitch_types <- raw %>%
 
 pitch_types$total <- rowSums(pitch_types[, -c(1, 2)])
 
-#create proportions of pitch types thrown
+# create proportions of pitch types thrown
 pitch_types_x <- pitch_types %>%
   mutate(across(starts_with("CH"):starts_with("SV"), ~ .x / total)) %>%
   dplyr::select(-total)
 
-#join back to main dataset (half_inning_data)
+# join back to main dataset (half_inning_data)
 half_inning_data <- half_inning_data %>%
   left_join(pitch_types_x, by = c("pitcher" = "player_name", "date" = "game_date"))
 
-#get rid of NA column
+# get rid of NA column
 half_inning_data <- half_inning_data[, 1:24]
 
-#rule: if mean is greater than 0.01, keep pitch type, otherwise exclude it
-#exclude FO, KN, SV
+# rule: if mean is greater than 0.01, keep pitch type, otherwise exclude it
+# exclude FO, KN, SV
 half_inning_data <- half_inning_data %>%
   dplyr::select(-c(FO, KN, SV))
 
 
-#pitcher spin rate and release extension feature
-spins <- raw %>% 
-  group_by(player_name) %>% 
-  summarize(spin_rate = mean(release_spin_rate, na.rm = TRUE)) %>% 
+# pitcher spin rate and release extension feature
+spins <- raw %>%
+  group_by(player_name) %>%
+  summarize(spin_rate = mean(release_spin_rate, na.rm = TRUE)) %>%
   ungroup()
-#join back to main dataset (half_inning_data)
-half_inning_data <- half_inning_data %>% 
+# join back to main dataset (half_inning_data)
+half_inning_data <- half_inning_data %>%
   left_join(spins, by = c("pitcher" = "player_name"))
 
 
-#park factors
+# park factors
 library(baseballr)
 
 park <- fg_park("2024")
-#add a new column with the 3 letter abbreviation of the baseball team
+# add a new column with the 3 letter abbreviation of the baseball team
 park$team <- park$home_team
 park$team <- replace(park$team, park$team == "Diamondbacks", "ARI")
 park$team <- replace(park$team, park$team == "Braves", "ATL")
@@ -574,9 +574,9 @@ park$team <- replace(park$team, park$team == "Rangers", "TEX")
 park$team <- replace(park$team, park$team == "Blue Jays", "TOR")
 park$team <- replace(park$team, park$team == "Nationals", "WSH")
 
-#join back to main dataset (half_inning_data)
+# join back to main dataset (half_inning_data)
 park <- park[, c(4, 5, 17)]
-half_inning_data <- half_inning_data %>% 
+half_inning_data <- half_inning_data %>%
   left_join(park, by = c("home_team" = "team"))
 
 colnames(half_inning_data)[23] <- "park_factor_3yr"
@@ -628,6 +628,7 @@ inning_summary2024 <- inning_summary %>%
 
 
 ```{r}
+library(xgboost)
 train <- na.omit(inning_summary2023)
 
 test <- na.omit(inning_summary2024)
@@ -673,46 +674,45 @@ gamma_list <- c()
 subsample_list <- c()
 colsample_list <- c()
 
-for (i in 2:5) {
+for (i in 1:5) {
   print("depth: ")
   print(i)
   max_depth <- i
-  for (j in 1:5) {
+  for (j in 1:6) {
     print("eta: ")
     print(j / 10)
     eta <- j / 10
-    for (k in 0:2) {
+    for (k in 0:3) {
       gamma <- k
-      for (l in 6:9) {
+      for (l in 5:9) {
         subsample <- l / 10
-        for (m in 6:9) {
-            for (n in 1:5) { 
-                small_acc = c()
-          colsample <- m / 10
-          # Specify model parameters
-          params <- list(
-            objective = "binary:logistic",
-            eval_metric = "logloss",
-            max_depth = max_depth,
-            eta = eta,
-            gamma = gamma,
-            subsample = subsample,
-            colsample_bytree = colsample
-          )
+        for (m in 5:9) {
+          small_acc_list <- c()
+          for (n in 1:8) {
+            colsample <- m / 10
+            # Specify model parameters
+            params <- list(
+              objective = "binary:logistic",
+              eval_metric = "logloss",
+              max_depth = max_depth,
+              eta = eta,
+              gamma = gamma,
+              subsample = subsample,
+              colsample_bytree = colsample
+            )
 
-          # Train xgboost model
-          xgb_model <- xgboost(params = params, data = dtrain, nrounds = 50)
-          # Make predictions on the training data
-          pred <- predict(xgb_model, dtest)
+            # Train xgboost model
+            xgb_model <- xgboost(params = params, data = dtrain, nrounds = 50)
+            # Make predictions on the training data
+            pred <- predict(xgb_model, dtest)
 
-          # Convert predicted probabilities to binary predictions
-          pred_binary <- ifelse(pred > 0.5, 1, 0)
-            acc_small <- mean(pred_binary == y_test)
-            small_acc <- c(small_acc, acc_small)
-            
-            }
-            
-          accuracy_list <- c(accuracy_list, mean(small_acc))
+            # Convert predicted probabilities to binary predictions
+            pred_binary <- ifelse(pred > 0.5, 1, 0)
+            small_acc <- mean(pred_binary == y_test)
+            small_acc_list <- c(small_acc_list, small_acc)
+          }
+
+          accuracy_list <- c(accuracy_list, mean(small_acc_list))
           depth_list <- c(depth_list, max_depth)
           eta_list <- c(eta_list, eta)
           gamma_list <- c(gamma_list, gamma)
@@ -724,19 +724,19 @@ for (i in 2:5) {
   }
 }
 
-accuracy_params <- data.frame(accuracy_list, depth_list, eta_list, gamma_list, subsample_list,colsample_list)
+accuracy_params <- data.frame(accuracy_list, depth_list, eta_list, gamma_list, subsample_list, colsample_list)
 
-filter(accuracy_params, accuracy_list > max(accuracy_list) - 0.01)
+filter(accuracy_params, accuracy_list > max(accuracy_list) - 0.001)
 
 # Specify model parameters
 params <- list(
   objective = "binary:logistic",
   eval_metric = "logloss",
   max_depth = 2,
-  colsample_bytree = 0.8,
-  eta=0.1,
-  subsample = 0.7,
-  gamma=1
+  colsample_bytree = 0.6,
+  eta = 0.1,
+  subsample = 0.6,
+  gamma = 0
   # Add other parameters as needed
 )
 
@@ -760,7 +760,7 @@ mean(pred_binary == y_test)
 importance_matrix <- xgb.importance(feature_names = colnames(X_train), model = xgb_model)
 
 # Plot feature importance
-xgb.plot.importance(importance_matrix, top_n = 10,main = "10 Most Important Features for XGBoost \nModel trained on 2023 Data")
+xgb.plot.importance(importance_matrix, top_n = 10, main = "10 Most Important Features for XGBoost \nModel trained on 2023 Data")
 ```
 
 ```{r}
@@ -770,6 +770,3 @@ conf_matrix <- confusionMatrix(as.factor(pred_binary), as.factor(y_test))
 # Plot confusion matrix
 fourfoldplot(conf_matrix$table, color = c("#CC6666", "#99CC99"), conf.level = 0, margin = 1, main = "XGBoost Confusion Matrix")
 ```
-
-
-
