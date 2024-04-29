@@ -776,10 +776,10 @@ dtest <- xgb.DMatrix(data = as.matrix(X_test), label = y_test)
 params <- list(
   objective = "binary:logistic",
   eval_metric = "logloss",
-  max_depth = 2,
-  colsample_bytree = 0.8,
+  max_depth = 1,
+  colsample_bytree = 0.7,
   eta=0.1,
-  subsample = 0.7,
+  subsample = 0.5,
   gamma=1
   # Add other parameters as needed
 )
@@ -948,7 +948,7 @@ For this analysis, we will generate our own set of probabilities that a NRFI wil
 We pulled MLB Statcast from the 2023 and beginning of the 2024 season using the pybaseball library in python. We then filtered the data to contain only pitches and at-bats from the first inning into a new inning summary data frame for modeling purposes. After filtering, we were left with 83,064 rows of data for the 2023 season and 9,952 rows of data for the ongoing 2024 season. We created pitcher and team features from the first inning Statcast data for model building purposes.
 
 
-## EDA
+### EDA
 
 After filtering to end of at-bats events, we could see the overall distribution of run scoring for home teams and away teams. As we can see in Figure 1, run scoring appears to have a Poisson distribution.
 
@@ -987,7 +987,7 @@ We then computed each team’s home and away run scoring rate and computed 80% c
 
 # Methods
 
-## Modeling Approach
+### Modeling Approach
 
 We treated the first inning as its own game. It is unique to later innings as pitcher performance from an entire appearance may not be fully representative of their performance in the first inning. To account for a minimum 3 plate appearances in the inning, we computed each team’s home and away run scoring rate. This feature is appropriate as many teams typically have the same starting lineup throughout the season, therefore we are assessing the first 3 hitters simultaneously. 
 
@@ -999,7 +999,8 @@ To achieve more uncertainty, we then converted this same multilevel model into a
 
 In addition, because we were not satisfied with the performance of our Bayesian model, we also implemented an XGBoost model to also predict whether there would be no runs in the first inning. We did this with the belief that by capturing nonlinear relationships and interactions between our features, we could produce more accurate predictions. 
 
-## Bayesian Multilevel Model Specification
+### Bayesian Multilevel Model Specification
+
 Level 1: \\
 $y_g = I + \beta_1 X_1 + \beta_2 X_2 + \beta_3 X_3 + \beta_4 X_4 + a_i + b_j + c_k + d_l + \epsilon_g$ \\
 Level 2: \\
@@ -1015,7 +1016,9 @@ I is the fixed intercept term for the level 1 equation, $X_1$ is a fixed effect 
 For the model where we assumed first inning runs were Poisson distributed and predicted the number of runs that would be scored in the first inning, the level 1 response variable $y_g$ is the total number of runs scored in that inning. To make predictions of whether runs were scored or not, we decided that if the predicted number of runs was 0.5 or higher, the prediction was that "Yes Runs First Inning", otherwise the prediction was "No Runs First Inning".  \\
 For the model where we assumed first inning runs were Binomial distributed and predicted whether or not runs would be scored in the first inning, $y_g$ is a binary indicator variable with values of 0 (indicating no runs were scored) and 1 (indicating that runs were scored). \\
 
-## XGBoost Model Specification
+### XGBoost Model Specification
+
+To take a different modeling approach, we also fit an XGBoost model. XGBoost trains a series of decision trees where each subsequent tree is an improvement of the last. The process then optimizes both the loss function and the regularization term. Using this process is an improvement from our models as both interactions and feature importance will be much more sound than our previous experimentation approach. When training the model, we used 24 features for both home team and away teams to predict a NRFI occurring. We then used an iterative process to find the ideal tuning parameters to return a model that consistently produced the highest accuracy. 
 
 # Results
 
@@ -1023,9 +1026,9 @@ The accuracy of these models is assessed by accuracy scores, however we kept in 
 
 The initial multilevel model failed to hit our benchmark accuracy of 60% as it scored approximately 42% accuracy. With its poor performance, bettor’s would be better suited guessing NRFI or YRFI for every game. So then we switched to our 2 Bayesian multilevel models with the logistic and poisson families.
 
-Our Poisson Bayesian multilevel model performed better than the initial multilevel model with an accuracy score of 56.13%. While this is much better performance, it was still on the edge of profitability. The logistic Bayesian multilevel model we implemented also achieved a barely profitable accuracy score of approximately 58.64%. After our unsatisfactory results from the Bayesian multilevel modeling, we took a different approach by implementing extreme gradient boosting (XGBoost). XGBoost trains a series of decision trees where each subsequent tree is an improvement of the last. The process then optimizes both the loss function and the regularization term. Using this process is an improvement from our models as both interactions and feature importance will be much more sound than our previous experimentation approach. 
+Our Poisson Bayesian multilevel model performed better than the initial multilevel model with an accuracy score of 56.13%. While this is much better performance, it was still on the edge of profitability. The logistic Bayesian multilevel model we implemented also achieved a barely profitable accuracy score of approximately 58.64%.
 
-When training the model, we used 24 features for both home team and away teams to predict a NRFI occurring. We then used an iterative process to find the ideal tuning parameters to return a model that consistently produced the highest accuracy. The XGBoost model that we implemented was far superior in performance compared to our other modeling attempts, achieving 90% accuracy on the 2023 data it was trained on and 67% accuracy on 2024 games when used as holdout data. This accuracy falls well above our aim of approximately 60% accuracy to be profitable.
+After our unsatisfactory results from the Bayesian multilevel modeling, we took a different approach by implementing extreme gradient boosting (XGBoost). The XGBoost model that we implemented was far superior in performance compared to our other modeling attempts, achieving 90% accuracy on the 2023 data it was trained on and 68% accuracy on 2024 games when used as holdout data. This accuracy falls well above our aim of approximately 60% accuracy to be profitable.
 
 ```{r, echo=FALSE, fig.cap="Confusion Matrix shows the predictions vs the actual outcomes of first inning results."}
 # Calculate confusion matrix
