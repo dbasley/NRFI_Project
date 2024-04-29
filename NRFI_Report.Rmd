@@ -26,7 +26,7 @@ statcast_2023_first_inning$on_1b[is.na(statcast_2023_first_inning$on_1b)] <- "wo
 statcast_2023_first_inning$on_2b[is.na(statcast_2023_first_inning$on_2b)] <- "woo"
 statcast_2023_first_inning$on_3b[is.na(statcast_2023_first_inning$on_3b)] <- "woo"
 
-# statcast_2023_first_inning <- statcast_2023_first_inning[rev(1:nrow(statcast_2023_first_inning)), ]
+
 
 # Vector of Events that only include action events
 # Balls and Strikes that DO NOT result in walks or strikeouts excluded
@@ -65,7 +65,7 @@ statcast_2023_first_inning <- statcast_2023_first_inning %>%
   mutate(runs_roi = max_runs - runs_before)
 
 
-# Start Game State compuation
+# Start Game State computation
 statcast_2023_first_inning <- statcast_2023_first_inning %>%
   mutate(bases = paste0(
     if_else(on_1b == "woo", 0, 1),
@@ -98,7 +98,9 @@ statcast_2023_first_inning <- statcast_2023_first_inning %>%
 
 # End of First Inning Summary
 end_inning_data <- statcast_2023_first_inning %>%
-  dplyr::select(c(game_date, game_pk, player_name, player_name, batter, post_home_score, post_away_score, inning_topbot, away_team, home_team)) %>%
+  dplyr::select(c(game_date, game_pk, player_name, 
+                  player_name, batter, post_home_score, 
+                  post_away_score, inning_topbot, away_team, home_team)) %>%
   group_by(game_pk) %>%
   mutate(
     away_runs = max(post_away_score),
@@ -189,7 +191,8 @@ half_inning_data <- half_inning_data %>%
   inner_join(mlb_team_run_rate, by = "team")
 
 # Join pitcher_stats with half_inning_data by player_name
-half_inning_data <- left_join(half_inning_data, pitcher_stats, by = c("pitcher" = "player_name"))
+half_inning_data <- left_join(half_inning_data, pitcher_stats, 
+                              by = c("pitcher" = "player_name"))
 
 
 
@@ -411,7 +414,10 @@ statcast_2024_first_inning <- statcast_2024_first_inning %>%
 
 # End of First Inning Summary
 end_inning_data <- statcast_2024_first_inning %>%
-  dplyr::select(c(game_date, game_pk, player_name, player_name, batter, post_home_score, post_away_score, inning_topbot, away_team, home_team)) %>%
+  dplyr::select(c(game_date, game_pk, player_name, 
+                  player_name, batter, post_home_score, 
+                  post_away_score, inning_topbot, away_team, 
+                  home_team)) %>%
   group_by(game_pk) %>%
   mutate(
     away_runs = max(post_away_score),
@@ -502,7 +508,8 @@ half_inning_data <- half_inning_data %>%
   inner_join(mlb_team_run_rate, by = "team")
 
 # Join pitcher_stats with half_inning_data by player_name
-half_inning_data <- left_join(half_inning_data, pitcher_stats, by = c("pitcher" = "player_name"))
+half_inning_data <- left_join(half_inning_data, pitcher_stats, 
+                              by = c("pitcher" = "player_name"))
 
 #pitch types feature
 
@@ -945,7 +952,7 @@ For this analysis, we will generate our own set of probabilities that a NRFI wil
 
 # Data
 
-We pulled MLB Statcast from the 2023 and beginning of the 2024 season using the pybaseball library in python. We then filtered the data to contain only pitches and at-bats from the first inning into a new inning summary data frame for modeling purposes. After filtering, we were left with 83,064 rows of data for the 2023 season and 9,952 rows of data for the ongoing 2024 season. We created pitcher and team features from the first inning Statcast data for model building purposes.
+We pulled MLB Statcast from the 2023 and beginning of the 2024 season using the pybaseball library in python. We then filtered the data to contain only pitches and at-bats from the first inning into a new inning summary data frame and created pitcher and team features from the first inning Statcast data for modeling purposes. After filtering, we were left with 83,064 rows of data for the 2023 season and 9,952 rows of data for the ongoing 2024 season. and created pitcher and team features from the first inning Statcast data.
 
 
 ### EDA
@@ -982,7 +989,6 @@ statcast_2023_first_inning %>%
 ```
 
 
-We then computed each team’s home and away run scoring rate and computed 80% credible intervals for these rates. As we can see in Figure 2, most teams run scoring rates overlap, however the Atlanta Braves have significantly higher run scoring at home than the other teams.
 
 
 # Methods
@@ -993,7 +999,7 @@ We treated the first inning as its own game. It is unique to later innings as pi
 
 Initially, we ran simulations using our home and away runs scoring rates. This model was naive as it does not take into account which pitcher is pitching for each team.
 
-We then created a new indicator variable to indicate first innings that ended 0-0 or not. From  there we used a multilevel logistic regression with random effects for the home and away teams, the home and away pitchers, home and away pitcher FIPs (Fielding Independent Performance), while still including the home and away run rates. This model was assessed using its accuracy score. 
+We then created a new indicator variable to indicate first innings that ended 0-0 or not. From  there we used a multilevel logistic regression with random effects for the home and away teams, the home and away pitchers, and fixed effects for the  home and away pitcher FIPs (Fielding Independent Performance), while still including fixed effects for the home and away run rates. This model was assessed using its accuracy score. 
 
 To achieve more uncertainty, we then converted this same multilevel model into a Bayesian multilevel model with weakly informed priors. We chose weakly informed priors as there were major rule changes such as the pitch clock and larger bases which provided major impacts on run scoring.
 
@@ -1001,20 +1007,33 @@ In addition, because we were not satisfied with the performance of our Bayesian 
 
 ### Bayesian Multilevel Model Specification
 
-Level 1: \\
-$y_g = I + \beta_1 X_1 + \beta_2 X_2 + \beta_3 X_3 + \beta_4 X_4 + a_i + b_j + c_k + d_l + \epsilon_g$ \\
-Level 2: \\
-$a_i = \alpha_0 + u_i, u_i \sim N(0, \sigma_i^2)$ \\
-$b_j = \beta_0 + u_j, u_j \sim N(0, \sigma_j^2)$ \\
-$c_k = \phi_0 + u_k, u_k \sim N(0, \sigma_k^2)$ \\
-$d_l = \tau_0 + u_l, u_l \sim N(0, \sigma_l^2)$ \\
-Priors: \\
-Level 1 Intercept $\sim$ N(0, 6.25) \\
-Level 1 Coefficients $\sim$ N(0, 25), N(0, 216.3841), N(0, 3.1329), N(0, 464.4025) \\
-Covariance Matrix $\sim$ Decov(1, 1, 1, 1) for regularization, concentration, shape, and scale parameters respectively. \\
-I is the fixed intercept term for the level 1 equation, $X_1$ is a fixed effect for the home team's run rate, $X_2$ is a fixed effect for the away team's run rate, $X_3$ is the home team's fielding independent pitching rate (FIP), $X_4$ is the away team's FIP, $a_i$ is a random effect for the home team, $b_j$ is a random effect for the away team, $c_k$ is a random effect for the home team's pitcher, $d_l$ is a random effect for the away team's pitcher, and $\epsilon_g$ is a term that captures the level 1 prediction error. \\
-For the model where we assumed first inning runs were Poisson distributed and predicted the number of runs that would be scored in the first inning, the level 1 response variable $y_g$ is the total number of runs scored in that inning. To make predictions of whether runs were scored or not, we decided that if the predicted number of runs was 0.5 or higher, the prediction was that "Yes Runs First Inning", otherwise the prediction was "No Runs First Inning".  \\
-For the model where we assumed first inning runs were Binomial distributed and predicted whether or not runs would be scored in the first inning, $y_g$ is a binary indicator variable with values of 0 (indicating no runs were scored) and 1 (indicating that runs were scored). \\
+Level 1: 
+
+$y_g = I + \beta_1 X_1 + \beta_2 X_2 + \beta_3 X_3 + \beta_4 X_4 + a_i + b_j + c_k + d_l + \epsilon_g$ 
+
+Level 2: 
+
+$a_i = \alpha_0 + u_i, u_i \sim N(0, \sigma_i^2)$ 
+
+$b_j = \beta_0 + u_j, u_j \sim N(0, \sigma_j^2)$ 
+
+$c_k = \phi_0 + u_k, u_k \sim N(0, \sigma_k^2)$ 
+
+$d_l = \tau_0 + u_l, u_l \sim N(0, \sigma_l^2)$ 
+
+Priors: 
+
+Level 1 Intercept $\sim$ N(0, 6.25) 
+
+Level 1 Coefficients $\sim$ N(0, 25), N(0, 216.3841), N(0, 3.1329), N(0, 464.4025) 
+
+Covariance Matrix $\sim$ Decov(1, 1, 1, 1) for regularization, concentration, shape, and scale parameters respectively. 
+
+I is the fixed intercept term for the level 1 equation, $X_1$ is a fixed effect for the home team's run rate, $X_2$ is a fixed effect for the away team's run rate, $X_3$ is the home team's fielding independent pitching rate (FIP), $X_4$ is the away team's FIP, $a_i$ is a random effect for the home team, $b_j$ is a random effect for the away team, $c_k$ is a random effect for the home team's pitcher, $d_l$ is a random effect for the away team's pitcher, and $\epsilon_g$ is a term that captures the level 1 prediction error. 
+
+For the model where we assumed first inning runs were Poisson distributed and predicted the number of runs that would be scored in the first inning, the level 1 response variable $y_g$ is the total number of runs scored in that inning. To make predictions of whether runs were scored or not, we decided that if the predicted number of runs was 0.5 or higher, the prediction was that "Yes Runs First Inning", otherwise the prediction was "No Runs First Inning".  
+
+For the model where we assumed first inning runs were Binomial distributed and predicted whether or not runs would be scored in the first inning, $y_g$ is a binary indicator variable with values of 0 (indicating no runs were scored) and 1 (indicating that runs were scored). 
 
 ### XGBoost Model Specification
 
@@ -1024,13 +1043,22 @@ To take a different modeling approach, we also fit an XGBoost model. XGBoost tra
 
 The accuracy of these models is assessed by accuracy scores, however we kept in mind that successful betting algorithms must be approximately 60% or better to be profitable as many of these NRFI bets have favorable odds for occurring. 
 
-The initial multilevel model failed to hit our benchmark accuracy of 60% as it scored approximately 42% accuracy. With its poor performance, bettor’s would be better suited guessing NRFI or YRFI for every game. So then we switched to our 2 Bayesian multilevel models with the logistic and poisson families.
+
+
+The initial multilevel model failed to hit our benchmark accuracy of 60% as it scored approximately 42% accuracy. With its poor performance, bettor’s would be better suited guessing NRFI or YRFI for every game. So then we switched to our 2 Bayesian multilevel models with the binomial and Poisson families.
+
 
 Our Poisson Bayesian multilevel model performed better than the initial multilevel model with an accuracy score of 56.13%. While this is much better performance, it was still on the edge of profitability. The logistic Bayesian multilevel model we implemented also achieved a barely profitable accuracy score of approximately 58.64%.
 
+
+
 After our unsatisfactory results from the Bayesian multilevel modeling, we took a different approach by implementing extreme gradient boosting (XGBoost). The XGBoost model that we implemented was far superior in performance compared to our other modeling attempts, achieving 90% accuracy on the 2023 data it was trained on and 68% accuracy on 2024 games when used as holdout data. This accuracy falls well above our aim of approximately 60% accuracy to be profitable.
 
-```{r, echo=FALSE, fig.cap="Confusion Matrix shows the predictions vs the actual outcomes of first inning results."}
+
+
+When looking at a confusion matrix for the 2024 NRFI predictions in Figure 2, we can see that false negatives and positives are being predicted somewhat evenly. The XGBoost model is also predicting more NRFIs than YRFIs. When examining the ten most important features for the model (Figure 3), we see that fielder independent pitching for both home team and away team (denoted as home_fip and away_fip) are the most significant contributors. Subsequently, different pitch types for both home and away teams impact decisions at varying levels. In Figure 3, these different pitch types are denoted as away_ff, home_cu, away_cg, etc. Ultimately, XGBoost is telling us that the pitcher and the type of pitches they throw are what matters most. Such feature importance holds true through k-fold cross validation on the 2023 season.
+
+```{r, echo=FALSE, out.width="50%", fig.align = 'center', fig.cap="Confusion Matrix shows the predictions vs the actual outcomes of first inning results."}
 # Calculate confusion matrix
 conf_matrix <- confusionMatrix(as.factor(pred_binary), as.factor(y_test))
 
@@ -1038,9 +1066,8 @@ conf_matrix <- confusionMatrix(as.factor(pred_binary), as.factor(y_test))
 fourfoldplot(conf_matrix$table, color = c("#CC6666", "#99CC99"), conf.level = 0, margin = 1, main = "XGBoost Confusion Matrix")
 ```
 
-When looking at a confusion matrix for the 2024 NRFI predictions in Figure NUMBER, we can see that false negatives and positives are being predicted somewhat evenly. The XGBoost model is also predicting more NRFIs than YRFIs. When examining the ten most important features for the model (Figure NUMBER), we see that fielder independent pitching for both home team and away team (denoted as home_fip and away_fip) are the most significant contributors. Subsequently, different pitch types for both home and away teams impact decisions at varying levels. In Figure NUMBER, these different pitch types are denoted as away_ff, home_cu, away_cg, etc. Ultimately, XGBoost is telling us that the pitcher and the type of pitches they throw are what matters most. Such feature importance holds true through k-fold cross validation on the 2023 season.
 
-```{r, echo=FALSE, fig.cap="Away pitcher and home pitcher fip are consistently the most important variables when determining the probability of a NRFI."}
+```{r, echo=FALSE, out.width="50%", fig.align = 'center', fig.cap="Away pitcher and home pitcher fip are consistently the most important variables when determining the probability of a NRFI."}
 # Extract feature importance
 importance_matrix <- xgb.importance(feature_names = colnames(X_train), model = xgb_model)
 
@@ -1050,13 +1077,15 @@ xgb.plot.importance(importance_matrix, top_n = 10,main = "10 Most Important Feat
 
 # Discussion
 
-Overall, our findings show the Bayesian model we applied to predict the occurrence of an NRFI does not generate accurate or confident enough predictions to be used to actually profit from bets. While it might be possible to improve this model through accounting for more features, including interactions, or a developing a more strongly-informed prior distribution, the current model does no better than weakly suggesting a random guess when it comes to deciding which games will have an NRFI. 
+Overall, our findings show the Bayesian models we applied to predict the occurrence of a NRFI does generate accurate enough predictions to be used to slightly profit from bets. While it might be possible to improve this model through accounting for more features, including interactions, or a developing a more strongly-informed prior distribution, the current model does slightly better than suggesting a random guess when it comes to deciding which games will have an NRFI. 
 
 A significant challenge present during this project was locating reference material that could be used to improve our model, as this topic will generally only be researched in a sports betting context where bettors will most likely not be inclined to share their betting model, as doing so would potentially reduce the odds and payout of the wager. Additionally, the dynamic nature of baseball means a high probability of an NRFI is not always indicative of the reality, so even when the prediction of an NRFI for a game has a fairly large probability it is possible that a run may still be scored, making the confidence of the prediction very important when deciding whether or not to place the bet. 
 
 
 Taken together, we conclude that future iterations of this project should include more features and a better informed prior distribution in the Bayesian model to increase the model accuracy, as well as develop a method to increase the probability value confidence to decide when to place the bet. Until the prediction accuracy and confidence meets our previously specified threshold, we should only consider using our XGBoost model to make betting predictions.
 
+
+# Code Appendix
 
 ```{r ref.label=knitr::all_labels(), echo = T, eval = F}
 ```
