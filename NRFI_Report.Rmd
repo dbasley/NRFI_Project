@@ -1085,7 +1085,3 @@ A significant challenge present during this project was locating reference mater
 Taken together, we conclude that future iterations of this project should include more features and a better informed prior distribution in the Bayesian model to increase the model accuracy, as well as develop a method to increase the probability value confidence to decide when to place the bet. Until the prediction accuracy and confidence meets our previously specified threshold, we should only consider using our XGBoost model to make betting predictions.
 
 
-# Code Appendix
-
-```{r ref.label=knitr::all_labels(), echo = T, eval = F}
-```
